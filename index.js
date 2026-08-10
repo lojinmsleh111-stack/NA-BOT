@@ -20,7 +20,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// قنوات اللوج المنفصلة (مع حماية القيمة الافتراضية)
+// قنوات اللوج المنفصلة
 const ACCEPT_LOG_CHANNEL_ID = process.env.ACCEPT_LOG_CHANNEL_ID || process.env.LOG_CHANNEL_ID || '1521844992811728906';
 const REJECT_LOG_CHANNEL_ID = process.env.REJECT_LOG_CHANNEL_ID || process.env.LOG_CHANNEL_ID || '1521845037535854642';
 
@@ -56,7 +56,7 @@ if (GROQ_API_KEY && GROQ_API_KEY.trim() !== '') {
         console.error('❌ خطأ في تهيئة Groq SDK:', e.message);
     }
 } else {
-    console.warn('⚠️ GROQ_API_KEY غير متوفر، سيعمل نظام التقديم بالنمط اليدوي عند الحاجة.');
+    console.warn('⚠️ GROQ_API_KEY غير متوفر!');
 }
 
 const applySessions = new Map();
@@ -117,8 +117,6 @@ if (DISCORD_TOKEN && CLIENT_ID) {
             console.error('حدث خطأ أثناء تسجيل الأوامر:', error.message);
         }
     })();
-} else {
-    console.error('❌ DISCORD_TOKEN أو CLIENT_ID مفقود!');
 }
 
 // ==============================
@@ -434,7 +432,7 @@ async function processApplication(user, answers) {
                 { role: 'system', content: 'You are an administrative assistant. Start response strictly with "مقبول" or "مرفوض".' },
                 { role: 'user', content: prompt }
             ],
-            model: 'llama3-70b-8192',
+            model: 'llama-3.3-70b-versatile',
             temperature: 0.1,
         });
 
@@ -466,7 +464,6 @@ async function processApplication(user, answers) {
         }
     }
 
-    // القبول أو الرفض
     if (!aiFailed && isAccepted) {
         let newNickname = '';
         if (guild) {
@@ -507,7 +504,6 @@ async function processApplication(user, answers) {
         await sendToLogChannel(ACCEPT_LOG_CHANNEL_ID, { embeds: [acceptEmbed], components: [row] });
 
     } else {
-        // رفض أو خطأ
         try {
             const dmChannel = await user.createDM();
             await dmChannel.send(`❌ **عذراً!** تم رفض تقديمك في **مجتمع النظيم**.\n\n**السبب:**\n${aiResponse}`);
@@ -563,12 +559,4 @@ const server = http.createServer((req, res) => {
     res.end('Discord Bot is Online!');
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`HTTP Server running on port ${PORT}`);
-});
-
-if (DISCORD_TOKEN) {
-    client.login(DISCORD_TOKEN);
-} else {
-    console.error('❌ DISCORD_TOKEN غير موجود في متغيرات البيئة!');
-}
+serv

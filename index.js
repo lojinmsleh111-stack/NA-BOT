@@ -21,8 +21,8 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 // رومات اللوج
-const ACCEPT_LOG_CHANNEL_ID = '1521844992811728906'; // روم لوق المقبولين
-const REJECT_LOG_CHANNEL_ID = '1521845037535854642'; // روم لوق المرفوضين
+const ACCEPT_LOG_CHANNEL_ID = '1521844992811728906';
+const REJECT_LOG_CHANNEL_ID = '1521845037535854642';
 
 // روم بانل التقديم
 const PANEL_CHANNEL_ID = '1521392423279005736';
@@ -236,7 +236,6 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.isChatInputCommand()) return;
 
-    // أمر إرسال البانل (محصور بروم التقديم المحدد)
     if (interaction.commandName === 'setup-apply') {
         if (interaction.channelId !== PANEL_CHANNEL_ID) {
             return interaction.reply({ content: `لا يمكنك استخدام هذا الأمر إلا في روم البانل <#${PANEL_CHANNEL_ID}>!`, ephemeral: true });
@@ -259,7 +258,6 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: 'تم إنشاء بانل التقديم بنجاح!', ephemeral: true });
     }
 
-    // التحقق من الروم المخصص لأوامر الرول بلاي الأخرى
     if (interaction.channelId !== TARGET_CHANNEL_ID) {
         return interaction.reply({ content: 'لا يمكنك استخدام هذا الأمر إلا في الروم المخصص له!', ephemeral: true });
     }
@@ -302,7 +300,7 @@ __**اتمنى لكم رول ممتع🤍**__
         const rateText = 
 `__**تقييم رولي**__
 
-__**اذا عجبك رول صوت ✓**__
+__**اذا عجبك رول صوت ✅**__
 
 __**شكراً لتصويتك هذا يساعدنا نفتح الرول بلاي ماقصرتو**__
 
@@ -314,23 +312,23 @@ __**اذا ماعجبك رول حط ❌**__
 
         const replyMessage = await interaction.reply({ content: rateText, fetchReply: true });
         try {
-            await replyMessage.react('✓');
+            await replyMessage.react('✅');
             await replyMessage.react('❌');
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error('خطأ في إرسال الريأكشن:', error); }
     }
 
     if (interaction.commandName === 'vote') {
         const voteText = 
 `__**تصويت رول بلاي**__
 
-__**في حال تبي رول بلاي صوت ب ✓**__
+__**في حال تبي رول بلاي صوت ب ✅**__
 
 __**شكراً لتصويتك هذا يساعدنا نفتح الرول بلاي ماقصرتو**__
 
 @everyone`;
 
         const replyMessage = await interaction.reply({ content: voteText, fetchReply: true });
-        try { await replyMessage.react('✓'); } catch (error) { console.error(error); }
+        try { await replyMessage.react('✅'); } catch (error) { console.error('خطأ في إرسال الريأكشن:', error); }
     }
 
     if (interaction.commandName === 'schedule') {
@@ -495,4 +493,4 @@ async function reviewApplicationWithAI(user, answers) {
 }
 
 client.login(DISCORD_TOKEN);
-                                                 
+                

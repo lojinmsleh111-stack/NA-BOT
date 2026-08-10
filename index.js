@@ -20,9 +20,9 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// رومات اللوج المنفصلة (يتم جلبها من متغيرات البيئة في Render)
-const ACCEPT_LOG_CHANNEL_ID = process.env.ACCEPT_LOG_CHANNEL_ID;
-const REJECT_LOG_CHANNEL_ID = process.env.REJECT_LOG_CHANNEL_ID;
+// قنوات اللوج المنفصلة (مع حماية القيمة الافتراضية)
+const ACCEPT_LOG_CHANNEL_ID = process.env.ACCEPT_LOG_CHANNEL_ID || process.env.LOG_CHANNEL_ID || '1521844992811728906';
+const REJECT_LOG_CHANNEL_ID = process.env.REJECT_LOG_CHANNEL_ID || process.env.LOG_CHANNEL_ID || '1521845037535854642';
 
 // روم بانل التقديم
 const PANEL_CHANNEL_ID = '1521392423279005736';
@@ -48,12 +48,15 @@ const client = new Client({
 });
 
 let groq = null;
-if (GROQ_API_KEY) {
+if (GROQ_API_KEY && GROQ_API_KEY.trim() !== '') {
     try {
         groq = new Groq({ apiKey: GROQ_API_KEY });
+        console.log('✅ تم تهيئة Groq SDK بنجاح.');
     } catch (e) {
-        console.error('خطأ في إعداد مكتبة Groq:', e.message);
+        console.error('❌ خطأ في تهيئة Groq SDK:', e.message);
     }
+} else {
+    console.warn('⚠️ GROQ_API_KEY غير متوفر، سيعمل نظام التقديم بالنمط اليدوي عند الحاجة.');
 }
 
 const applySessions = new Map();
@@ -100,20 +103,23 @@ const commands = [
         .setDescription('إنشاء بانل التقديم (للإدارة)')
 ].map(command => command.toJSON());
 
-const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
-
-(async () => {
-    try {
-        console.log('جاري تسجيل الأوامر...');
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
-            { body: commands }
-        );
-        console.log('تم تسجيل جميع الأوامر بنجاح!');
-    } catch (error) {
-        console.error('حدث خطأ أثناء تسجيل الأوامر:', error);
-    }
-})();
+if (DISCORD_TOKEN && CLIENT_ID) {
+    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    (async () => {
+        try {
+            console.log('جاري تسجيل الأوامر...');
+            await rest.put(
+                Routes.applicationCommands(CLIENT_ID),
+                { body: commands }
+            );
+            console.log('تم تسجيل جميع الأوامر بنجاح!');
+        } catch (error) {
+            console.error('حدث خطأ أثناء تسجيل الأوامر:', error.message);
+        }
+    })();
+} else {
+    console.error('❌ DISCORD_TOKEN أو CLIENT_ID مفقود!');
+}
 
 // ==============================
 //        الوظائف المساعدة
@@ -188,35 +194,35 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-    if (interaction.isButton()) {
-        const customId = interaction.customId;
+    try {
+        if (interaction.isButton()) {
+            const customId = interaction.customId;
 
-        if (customId === 'start_apply_button') {
-            return await startApplicationProcess(interaction.user, interaction);
-        }
-
-        if (customId.startsWith('manual_accept_') || customId.startsWith('manual_reject_')) {
-            const parts = customId.split('_');
-            const action = parts[1]; 
-            const targetUserId = parts[2];
-            const robloxName = parts.slice(3).join('_') || 'User';
-
-            let guild;
-            try {
-                guild = await client.guilds.fetch(GUILD_ID);
-            } catch (err) {
-                return interaction.reply({ content: 'تعذر الوصول للسيرفر.', ephemeral: true });
+            if (customId === 'start_apply_button') {
+                return await startApplicationProcess(interaction.user, interaction);
             }
 
-            let member;
-            try {
-                member = await guild.members.fetch(targetUserId);
-            } catch (err) {
-                return interaction.reply({ content: 'تعذر العثور على العضو في السيرفر.', ephemeral: true });
-            }
+            if (customId.startsWith('manual_accept_') || customId.startsWith('manual_reject_')) {
+                const parts = customId.split('_');
+                const action = parts[1]; 
+                const targetUserId = parts[2];
+                const robloxName = parts.slice(3).join('_') || 'User';
 
-            if (action === 'accept') {
+                let guild;
                 try {
+                    guild = await client.guilds.fetch(GUILD_ID);
+                } catch (err) {
+                    return interaction.reply({ content: 'تعذر الوصول للسيرفر.', ephemeral: true });
+                }
+
+                let member;
+                try {
+                    member = await guild.members.fetch(targetUserId);
+                } catch (err) {
+                    return interaction.reply({ content: 'تعذر العثور على العضو في السيرفر.', ephemeral: true });
+                }
+
+                if (action === 'accept') {
                     const uniqueId = await generateUniqueId(guild);
                     const newNickname = `NA | ${robloxName} | ${uniqueId}`;
                     await member.setNickname(newNickname).catch(e => console.log('تعذر تغيير الاسم:', e.message));
@@ -228,12 +234,7 @@ client.on('interactionCreate', async (interaction) => {
                         .addFields({ name: 'الاسم الجديد', value: `\`${newNickname}\`` });
 
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
-                } catch (err) {
-                    console.error('خطأ في القبول اليدوي:', err);
-                    return interaction.reply({ content: 'حدث خطأ أثناء القبول اليدوي.', ephemeral: true });
-                }
-            } else if (action === 'reject') {
-                try {
+                } else if (action === 'reject') {
                     await member.setNickname(null).catch(() => {}); 
                     if (ROLE_ID) await member.roles.remove(ROLE_ID).catch(() => {});
 
@@ -242,48 +243,44 @@ client.on('interactionCreate', async (interaction) => {
                         .setTitle(`❌ تم الرفض يدوياً بواسطة: ${interaction.user.tag}`);
 
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
-                } catch (err) {
-                    console.error('خطأ في الرفض اليدوي:', err);
-                    return interaction.reply({ content: 'حدث خطأ أثناء الرفض اليدوي.', ephemeral: true });
                 }
+                return;
             }
-            return;
-        }
-    }
-
-    if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'setup-apply') {
-        if (interaction.channelId !== PANEL_CHANNEL_ID) {
-            return interaction.reply({ content: `لا يمكنك استخدام هذا الأمر إلا في روم البانل <#${PANEL_CHANNEL_ID}>!`, ephemeral: true });
         }
 
-        const panelEmbed = new EmbedBuilder()
-            .setColor(0x2F3136)
-            .setTitle('📝 تقديم تصريح مجتمع النظيم')
-            .setDescription('مرحباً بك! لتقديم طلب الحصول على تصريح داخل السيرفر، اضغط على الزر أدناه للبدء.\n\n⚠️ **ملاحظة:** سيقوم البوت بالتواصل معك في الرسائل الخاصة (DM) لطرح الأسئلة ومراجعتها بواسطة الذكاء الاصطناعي.')
-            .setFooter({ text: 'مجتمع النظيم للعب الواقعي' });
+        if (!interaction.isChatInputCommand()) return;
 
-        const applyButton = new ButtonBuilder()
-            .setCustomId('start_apply_button')
-            .setLabel('بدء التقديم 📝')
-            .setStyle(ButtonStyle.Success);
+        if (interaction.commandName === 'setup-apply') {
+            if (interaction.channelId !== PANEL_CHANNEL_ID) {
+                return interaction.reply({ content: `لا يمكنك استخدام هذا الأمر إلا في روم البانل <#${PANEL_CHANNEL_ID}>!`, ephemeral: true });
+            }
 
-        const row = new ActionRowBuilder().addComponents(applyButton);
+            const panelEmbed = new EmbedBuilder()
+                .setColor(0x2F3136)
+                .setTitle('📝 تقديم تصريح مجتمع النظيم')
+                .setDescription('مرحباً بك! لتقديم طلب الحصول على تصريح داخل السيرفر، اضغط على الزر أدناه للبدء.\n\n⚠️ **ملاحظة:** سيقوم البوت بالتواصل معك في الرسائل الخاصة (DM) لطرح الأسئلة ومراجعتها بواسطة الذكاء الاصطناعي.')
+                .setFooter({ text: 'مجتمع النظيم للعب الواقعي' });
 
-        await interaction.channel.send({ embeds: [panelEmbed], components: [row] });
-        return interaction.reply({ content: 'تم إنشاء بانل التقديم بنجاح!', ephemeral: true });
-    }
+            const applyButton = new ButtonBuilder()
+                .setCustomId('start_apply_button')
+                .setLabel('بدء التقديم 📝')
+                .setStyle(ButtonStyle.Success);
 
-    if (interaction.channelId !== TARGET_CHANNEL_ID) {
-        return interaction.reply({ content: 'لا يمكنك استخدام هذا الأمر إلا في الروم المخصص له!', ephemeral: true });
-    }
+            const row = new ActionRowBuilder().addComponents(applyButton);
 
-    if (interaction.commandName === 'roleplay') {
-        const hostAccount = interaction.options.getString('حسابك_روبلوكس');
-        const startTime = interaction.options.getString('وقت_بداية_الرول');
+            await interaction.channel.send({ embeds: [panelEmbed], components: [row] });
+            return interaction.reply({ content: 'تم إنشاء بانل التقديم بنجاح!', ephemeral: true });
+        }
 
-        const responseText = 
+        if (interaction.channelId !== TARGET_CHANNEL_ID) {
+            return interaction.reply({ content: 'لا يمكنك استخدام هذا الأمر إلا في الروم المخصص له!', ephemeral: true });
+        }
+
+        if (interaction.commandName === 'roleplay') {
+            const hostAccount = interaction.options.getString('حسابك_روبلوكس');
+            const startTime = interaction.options.getString('وقت_بداية_الرول');
+
+            const responseText = 
 `__**رول بلاي مجتمع النظيم**__
 
 __**تم اعلان رول بلاي Greenville جميع الي يدخلون رول صفو بالمعرض **__
@@ -310,11 +307,11 @@ __**اتمنى لكم رول ممتع🤍**__
 
 @everyone`;
 
-        await interaction.reply({ content: responseText });
-    }
+            await interaction.reply({ content: responseText });
+        }
 
-    if (interaction.commandName === 'rate') {
-        const rateText = 
+        if (interaction.commandName === 'rate') {
+            const rateText = 
 `__**تقييم رولي**__
 
 __**اذا عجبك رول صوت ✅**__
@@ -327,15 +324,15 @@ __**اذا ماعجبك رول حط ❌**__
 
 @everyone`;
 
-        const replyMessage = await interaction.reply({ content: rateText, fetchReply: true });
-        try {
-            await replyMessage.react('✅');
-            await replyMessage.react('❌');
-        } catch (error) { console.error('خطأ في إرسال الريأكشن:', error); }
-    }
+            const replyMessage = await interaction.reply({ content: rateText, fetchReply: true });
+            try {
+                await replyMessage.react('✅');
+                await replyMessage.react('❌');
+            } catch (error) { console.error('خطأ في إرسال الريأكشن:', error); }
+        }
 
-    if (interaction.commandName === 'vote') {
-        const voteText = 
+        if (interaction.commandName === 'vote') {
+            const voteText = 
 `__**تصويت رول بلاي**__
 
 __**في حال تبي رول بلاي صوت ب ✅**__
@@ -344,12 +341,12 @@ __**شكراً لتصويتك هذا يساعدنا نفتح الرول بلاي
 
 @everyone`;
 
-        const replyMessage = await interaction.reply({ content: voteText, fetchReply: true });
-        try { await replyMessage.react('✅'); } catch (error) { console.error('خطأ في إرسال الريأكشن:', error); }
-    }
+            const replyMessage = await interaction.reply({ content: voteText, fetchReply: true });
+            try { await replyMessage.react('✅'); } catch (error) { console.error('خطأ في إرسال الريأكشن:', error); }
+        }
 
-    if (interaction.commandName === 'schedule') {
-        const scheduleText = 
+        if (interaction.commandName === 'schedule') {
+            const scheduleText = 
 `__**اوقات رول بلاي**__
 
 __**من الساعه 12الظهر الى 2**__
@@ -362,7 +359,10 @@ __**من الساعه 1 اليل الى 3**__
 
 @everyone`;
 
-        await interaction.reply({ content: scheduleText });
+            await interaction.reply({ content: scheduleText });
+        }
+    } catch (err) {
+        console.error('خطأ أثناء تنفيذ التفاعل:', err.message);
     }
 });
 
@@ -394,7 +394,7 @@ client.on('messageCreate', async (message) => {
         applySessions.delete(userId);
         
         processApplication(message.author, userAnswers).catch(err => {
-            console.error('خطأ كلي في processApplication:', err);
+            console.error('خطأ كلي في processApplication:', err.message);
         });
     }
 });
@@ -427,7 +427,7 @@ async function processApplication(user, answers) {
     `;
 
     try {
-        if (!groq) throw new Error('مكتبة Groq غير مهيأة أو المفتاح غائب');
+        if (!groq) throw new Error('مكتبة Groq غير مهيأة أو مفتاح GROQ_API_KEY مفقود');
 
         const chatCompletion = await groq.chat.completions.create({
             messages: [
@@ -504,11 +504,7 @@ async function processApplication(user, answers) {
 
         const row = new ActionRowBuilder().addComponents(rejectButton);
 
-        if (ACCEPT_LOG_CHANNEL_ID) {
-            await sendToLogChannel(ACCEPT_LOG_CHANNEL_ID, { embeds: [acceptEmbed], components: [row] });
-        } else {
-            console.error('❌ متغير ACCEPT_LOG_CHANNEL_ID غير محدد في Render!');
-        }
+        await sendToLogChannel(ACCEPT_LOG_CHANNEL_ID, { embeds: [acceptEmbed], components: [row] });
 
     } else {
         // رفض أو خطأ
@@ -534,15 +530,15 @@ async function processApplication(user, answers) {
 
         const row = new ActionRowBuilder().addComponents(acceptButton);
 
-        if (REJECT_LOG_CHANNEL_ID) {
-            await sendToLogChannel(REJECT_LOG_CHANNEL_ID, { embeds: [rejectEmbed], components: [row] });
-        } else {
-            console.error('❌ متغير REJECT_LOG_CHANNEL_ID غير محدد في Render!');
-        }
+        await sendToLogChannel(REJECT_LOG_CHANNEL_ID, { embeds: [rejectEmbed], components: [row] });
     }
 }
 
 async function sendToLogChannel(channelId, messageOptions) {
+    if (!channelId) {
+        console.error('❌ لم يتم توفير channelId لإرسال اللوج.');
+        return;
+    }
     try {
         const logChannel = await client.channels.fetch(channelId);
         if (logChannel) {
@@ -571,4 +567,8 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`HTTP Server running on port ${PORT}`);
 });
 
-client.login(DISCORD_TOKEN);
+if (DISCORD_TOKEN) {
+    client.login(DISCORD_TOKEN);
+} else {
+    console.error('❌ DISCORD_TOKEN غير موجود في متغيرات البيئة!');
+}

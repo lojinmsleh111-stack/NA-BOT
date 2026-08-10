@@ -1,17 +1,26 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    REST, 
+    Routes, 
+    SlashCommandBuilder, 
+    EmbedBuilder, 
+    ChannelType, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} = require('discord.js');
 const { Groq } = require('groq-sdk');
 
 // ==============================
 //           الإعدادات
 // ==============================
-// يتم سحب هذه البيانات من إعدادات Render (Environment Variables) للحماية
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
-// ايدي الروم المخصص لأوامر الرول بلاي
 const TARGET_CHANNEL_ID = '1510857986778726641';
 
 // ==============================
@@ -29,8 +38,6 @@ const client = new Client({
 });
 
 const groq = new Groq({ apiKey: GROQ_API_KEY });
-
-// تخزين مؤقت لحالات التقديم الجارية
 const applySessions = new Map();
 
 // ==============================
@@ -72,7 +79,10 @@ const commands = [
         .setDescription('إرسال أوقات الرول بلاي عند عدم وجود منظم'),
     new SlashCommandBuilder()
         .setName('apply')
-        .setDescription('بدء تقديم تصريح جديد عبر الذكاء الاصطناعي')
+        .setDescription('بدء تقديم تصريح جديد عبر الذكاء الاصطناعي'),
+    new SlashCommandBuilder()
+        .setName('setup-apply')
+        .setDescription('إنشاء بانل التقديم (للإدارة)')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
@@ -108,43 +118,80 @@ async function generateUniqueId(guild) {
     return randomId;
 }
 
+// وظيفة بدء جلسة التقديم في الخاص
+async function startApplicationProcess(user, interaction = null) {
+    const userId = user.id;
+    if (applySessions.has(userId)) {
+        const msg = 'لديك جلسة تقديم جارية بالفعل في الخاص.';
+        return interaction ? interaction.reply({ content: msg, ephemeral: true }) : null;
+    }
+
+    try {
+        const dmChannel = await user.createDM();
+        const startEmbed = new EmbedBuilder()
+            .setColor(0x0099FF)
+            .setTitle('Application Started')
+            .setDescription('نحن سعداء بتقدملك لمجتمع النظيم.\nيرجى الإجابة على الأسئلة التالية بعناية، سيتم مراجعة إجاباتك بواسطة الذكاء الاصطناعي.\n\nبدءاً من الآن، أرسل إجاباتك كرسايل عادية في هذه المحادثة.');
+
+        await dmChannel.send({ embeds: [startEmbed] });
+        await dmChannel.send(`**${applyQuestions[0].text}**`);
+
+        applySessions.set(userId, {
+            currentQuestionIndex: 0,
+            answers: [],
+            dmChannelId: dmChannel.id
+        });
+
+        if (interaction) {
+            await interaction.reply({ content: 'تم بدء التقديم! يرجى التحقق من الرسائل الخاصة بك (DM).', ephemeral: true });
+        }
+    } catch (error) {
+        if (interaction) {
+            await interaction.reply({ content: 'لا يمكنني بدء التقديم. يرجى التأكد من تفعيل الرسائل الخاصة.', ephemeral: true });
+        }
+    }
+}
+
 // ==============================
-//      منطق معالجة الأوامر
+//      منطق معالجة الأوامر والأزرار
 // ==============================
 client.once('ready', () => {
     console.log(`تم تشغيل البوت بنجاح باسم: ${client.user.tag}`);
 });
 
 client.on('interactionCreate', async (interaction) => {
+    // 1. التعامل مع نقرات الأزرار (Button Interaction)
+    if (interaction.isButton()) {
+        if (interaction.customId === 'start_apply_button') {
+            await startApplicationProcess(interaction.user, interaction);
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
-    // معالجة أمر التقديم (/apply)
+    // 2. أمر إنشاء بانل التقديم (/setup-apply)
+    if (interaction.commandName === 'setup-apply') {
+        const panelEmbed = new EmbedBuilder()
+            .setColor(0x2F3136)
+            .setTitle('📝 تقديم تصريح مجتمع النظيم')
+            .setDescription('مرحباً بك! لتقديم طلب الحصول على تصريح داخل السيرفر، اضغط على الزر أدناه للبدء.\n\n⚠️ **ملاحظة:** سيقوم البوت بالتواصل معك في الرسائل الخاصة (DM) لطرح الأسئلة ومراجعتها بواسطة الذكاء الاصطناعي.')
+            .setFooter({ text: 'مجتمع النظيم للعب الواقعي' });
+
+        const applyButton = new ButtonBuilder()
+            .setCustomId('start_apply_button')
+            .setLabel('بدء التقديم 📝')
+            .setStyle(ButtonStyle.Success);
+
+        const row = new ActionRowBuilder().addComponents(applyButton);
+
+        await interaction.channel.send({ embeds: [panelEmbed], components: [row] });
+        return interaction.reply({ content: 'تم إنشاء بانل التقديم بنجاح!', ephemeral: true });
+    }
+
+    // 3. أمر التقديم المباشر (/apply)
     if (interaction.commandName === 'apply') {
-        const userId = interaction.user.id;
-        if (applySessions.has(userId)) {
-            return interaction.reply({ content: 'لديك جلسة تقديم جارية بالفعل في الخاص.', ephemeral: true });
-        }
-
-        try {
-            const dmChannel = await interaction.user.createDM();
-            const startEmbed = new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle('Application Started')
-                .setDescription('نحن سعداء بتقدملك لمجتمع النظيم.\nيرجى الإجابة على الأسئلة التالية بعناية، سيتم مراجعة إجاباتك بواسطة الذكاء الاصطناعي.\n\nبدءاً من الآن، أرسل إجاباتك كرسايل عادية في هذه المحادثة.');
-
-            await dmChannel.send({ embeds: [startEmbed] });
-            await dmChannel.send(`**${applyQuestions[0].text}**`);
-
-            applySessions.set(userId, {
-                currentQuestionIndex: 0,
-                answers: [],
-                dmChannelId: dmChannel.id
-            });
-
-            return interaction.reply({ content: 'تم بدء التقديم! يرجى التحقق من الرسائل الخاصة بك (DM).', ephemeral: true });
-        } catch (error) {
-            return interaction.reply({ content: 'لا يمكنني بدء التقديم. يرجى التأكد من تفعيل الرسائل الخاصة.', ephemeral: true });
-        }
+        return await startApplicationProcess(interaction.user, interaction);
     }
 
     // التحقق من الروم لبقية الأوامر
@@ -345,4 +392,3 @@ async function reviewApplicationWithAI(user, answers) {
 }
 
 client.login(DISCORD_TOKEN);
-                      

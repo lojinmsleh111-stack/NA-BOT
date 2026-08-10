@@ -111,7 +111,10 @@ const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 //        الوظائف المساعدة
 // ==============================
 async function generateUniqueId(guild) {
-    await guild.members.fetch(); 
+    try {
+        await guild.members.fetch(); 
+    } catch (e) { console.error('خطأ في جلب الأعضاء:', e); }
+
     let isUnique = false;
     let randomId = '';
 
@@ -202,8 +205,8 @@ client.on('interactionCreate', async (interaction) => {
                 try {
                     const uniqueId = await generateUniqueId(guild);
                     const newNickname = `NA | ${robloxName} | ${uniqueId}`;
-                    await member.setNickname(newNickname);
-                    if (ROLE_ID) await member.roles.add(ROLE_ID);
+                    await member.setNickname(newNickname).catch(e => console.log('تعذر تغيير الاسم:', e.message));
+                    if (ROLE_ID) await member.roles.add(ROLE_ID).catch(e => console.log('تعذر إضافة الرتبة:', e.message));
 
                     const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                         .setColor(0x00FF00)
@@ -213,12 +216,12 @@ client.on('interactionCreate', async (interaction) => {
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
                 } catch (err) {
                     console.error('خطأ في القبول اليدوي:', err);
-                    return interaction.reply({ content: 'حدث خطأ أثناء تعديل رتبة أو اسم العضو (تأكد من صلاحيات البوت وأن رتبته أفقياً فوق رتبة الشخص).', ephemeral: true });
+                    return interaction.reply({ content: 'حدث خطأ أثناء القبول اليدوي.', ephemeral: true });
                 }
             } else if (action === 'reject') {
                 try {
-                    await member.setNickname(null); 
-                    if (ROLE_ID) await member.roles.remove(ROLE_ID);
+                    await member.setNickname(null).catch(() => {}); 
+                    if (ROLE_ID) await member.roles.remove(ROLE_ID).catch(() => {});
 
                     const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                         .setColor(0xFF0000)
@@ -227,7 +230,7 @@ client.on('interactionCreate', async (interaction) => {
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
                 } catch (err) {
                     console.error('خطأ في الرفض اليدوي:', err);
-                    return interaction.reply({ content: 'حدث خطأ أثناء سحب الرتبة أو تعديل اسم العضو.', ephemeral: true });
+                    return interaction.reply({ content: 'حدث خطأ أثناء الرفض اليدوي.', ephemeral: true });
                 }
             }
             return;
@@ -369,7 +372,7 @@ client.on('messageCreate', async (message) => {
         const finishingEmbed = new EmbedBuilder()
             .setColor(0xFF9900)
             .setTitle('⏳ تم استلام إجاباتك بنجاح')
-            .setDescription('جاري مراجعة إجاباتك الآن بواسطة الذكاء الاصطناعي وإرسال التقرير للإدارة.\nشكراً لصبرك.');
+            .setDescription('جاري مراجعة إجاباتك الآن بواسطة الذكاء الاصطناعي وإرسال التقرير للإدارة...\nشكراً لصبرك.');
 
         await message.channel.send({ embeds: [finishingEmbed] });
         await reviewApplicationWithAI(message.author, session.answers);
@@ -398,102 +401,118 @@ async function reviewApplicationWithAI(user, answers) {
     3. كتب القسم كاملاً وبدقة في السؤال 5 بدون تحريف أو نقص كبير.
 
     تنبيه هام جداً:
-    يجب أن تكون أول كلمة في ردك هي [مقبول] أو [مرفوض] حصراً وفي أول سطر، ثم اذكر السبب والتفاصيل بعدها.
+    يجب أن تكتب النتيجة في السطر الأول كـ: مقبول أو مرفوض.
+    ثم اذكر السبب والتفاصيل بعد ذلك.
     `;
 
     try {
         const chatCompletion = await groq.chat.completions.create({
             messages: [
-                { role: 'system', content: 'You are an administrative assistant. Reply strictly with [مقبول] or [مرفوض] at the very beginning of your response.' },
+                { role: 'system', content: 'You are an administrative assistant. Start response with "مقبول" or "مرفوض".' },
                 { role: 'user', content: prompt }
             ],
             model: 'llama3-70b-8192',
             temperature: 0.1,
         });
 
-        const aiResponse = chatCompletion.choices[0]?.message?.content || '[مرفوض]\nلم يتم استلام رد من الذكاء الاصطناعي.';
+        const aiResponse = chatCompletion.choices[0]?.message?.content || 'مرفوض\nلم يتم استلام رد من الذكاء الاصطناعي.';
         
-        // التحقق من القبول بمرونة أكثر
-        const isAccepted = aiResponse.toLowerCase().includes('[مقبول]');
+        // فحص النتيجة بمرونة كاملة
+        const cleanResponse = aiResponse.trim();
+        const isAccepted = cleanResponse.includes('مقبول') && !cleanResponse.startsWith('غير مقبول');
+        
         const robloxUsername = answers[2]?.answer ? answers[2].answer.trim() : user.username;
 
         const guild = await client.guilds.fetch(GUILD_ID);
-        let member;
+        let member = null;
         try {
             member = await guild.members.fetch(user.id);
         } catch (e) {
-            console.error('لم يتم العثور على العضو في السيرفر:', e);
-            return;
+            console.error('لم يتم العثور على العضو في السيرفر:', e.message);
         }
 
         if (isAccepted) {
-            try {
+            let newNickname = '';
+            if (guild) {
                 const uniqueId = await generateUniqueId(guild);
-                const newNickname = `NA | ${robloxUsername} | ${uniqueId}`;
+                newNickname = `NA | ${robloxUsername} | ${uniqueId}`;
+            }
 
-                // تنفيذ التغييرات تلقائياً
-                await member.setNickname(newNickname).catch(err => console.error('خطأ في تغيير الاسم تلقائياً:', err));
+            // محاولة تغيير الاسم والرتبة بدون إيقاف الكود عند الفشل
+            if (member) {
+                await member.setNickname(newNickname).catch(err => console.error('⚠️ لم يغير الاسم (غالباً بسبب صلاحيات أو أن العضو أونر/إداري أعلى من البوت):', err.message));
                 if (ROLE_ID) {
-                    await member.roles.add(ROLE_ID).catch(err => console.error('خطأ في إعطاء الرتبة تلقائياً (تأكد من موقع رتبة البوت):', err));
+                    await member.roles.add(ROLE_ID).catch(err => console.error('⚠️ لم يعطِ الرتبة (تأكد من أن رتبة البوت أعلى من الرتبة المراد إعطاؤها):', err.message));
                 }
+            }
 
-                const acceptEmbed = new EmbedBuilder()
-                    .setColor(0x00FF00)
-                    .setTitle(`✅ تقديم مقبول تلقائياً: ${user.tag}`)
-                    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(`**تحليل الذكاء الاصطناعي:**\n${aiResponse}`)
-                    .addFields(
-                        { name: 'الاسم الجديد', value: `\`${newNickname}\`` },
-                        { name: 'ايدي المستخدم', value: user.id, inline: true }
-                    )
-                    .setFooter({ text: 'مقبول تلقائياً بواسطة الذكاء الاصطناعي' });
+            // إرسال تنبيه للمستخدم بالخاص
+            try {
+                const dmChannel = await user.createDM();
+                await dmChannel.send(`🎉 **تهانينا!** تم قبول تقديمك في **مجتمع النظيم** بنجاح.\nتم إعطاؤك التصريح وتعديل اسمك داخل السيرفر.`);
+            } catch (err) { console.log('تعذر إرسال DM للمستخدم بالقبول'); }
 
-                const rejectButton = new ButtonBuilder()
-                    .setCustomId(`manual_reject_${user.id}_${robloxUsername}`)
-                    .setLabel('رفض يدوي ❌')
-                    .setStyle(ButtonStyle.Danger);
+            // إرسال اللوج
+            const acceptEmbed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle(`✅ تقديم مقبول تلقائياً: ${user.tag}`)
+                .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                .setDescription(`**تحليل الذكاء الاصطناعي:**\n${aiResponse}`)
+                .addFields(
+                    { name: 'الاسم الجديد المفترض', value: `\`${newNickname || 'غير متاح'}\`` },
+                    { name: 'ايدي المستخدم', value: user.id, inline: true }
+                )
+                .setFooter({ text: 'مقبول تلقائياً بواسطة الذكاء الاصطناعي' });
 
-                const row = new ActionRowBuilder().addComponents(rejectButton);
+            const rejectButton = new ButtonBuilder()
+                .setCustomId(`manual_reject_${user.id}_${robloxUsername}`)
+                .setLabel('رفض يدوي ❌')
+                .setStyle(ButtonStyle.Danger);
 
-                const acceptLogChannel = await client.channels.fetch(ACCEPT_LOG_CHANNEL_ID);
-                if (acceptLogChannel) {
-                    await acceptLogChannel.send({ embeds: [acceptEmbed], components: [row] });
-                }
+            const row = new ActionRowBuilder().addComponents(rejectButton);
 
-            } catch (err) {
-                console.error('حدث خطأ أثناء تنفيذ إجراءات القبول:', err);
+            const acceptLogChannel = await client.channels.fetch(ACCEPT_LOG_CHANNEL_ID).catch(() => null);
+            if (acceptLogChannel) {
+                await acceptLogChannel.send({ embeds: [acceptEmbed], components: [row] });
+            } else {
+                console.error('❌ تعذر العثور على روم لوج المقبولين! تأكد من الايدي الخاص بها.');
             }
 
         } else {
+            // إرسال تنبيه للمستخدم بالخاص
             try {
-                const rejectEmbed = new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle(`❌ تقديم مرفوض تلقائياً: ${user.tag}`)
-                    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(`**تحليل الذكاء الاصطناعي:**\n${aiResponse}`)
-                    .addFields(
-                        { name: 'ايدي المستخدم', value: user.id, inline: true }
-                    )
-                    .setFooter({ text: 'مرفوض تلقائياً بواسطة الذكاء الاصطناعي' });
+                const dmChannel = await user.createDM();
+                await dmChannel.send(`❌ **عذراً!** تم رفض تقديمك في **مجتمع النظيم**.\n**السبب:**\n${aiResponse}`);
+            } catch (err) { console.log('تعذر إرسال DM للمستخدم بالرفض'); }
 
-                const acceptButton = new ButtonBuilder()
-                    .setCustomId(`manual_accept_${user.id}_${robloxUsername}`)
-                    .setLabel('قبول يدوي ✅')
-                    .setStyle(ButtonStyle.Success);
+            // إرسال اللوج
+            const rejectEmbed = new EmbedBuilder()
+                .setColor(0xFF0000)
+                .setTitle(`❌ تقديم مرفوض تلقائياً: ${user.tag}`)
+                .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                .setDescription(`**تحليل الذكاء الاصطناعي:**\n${aiResponse}`)
+                .addFields(
+                    { name: 'ايدي المستخدم', value: user.id, inline: true }
+                )
+                .setFooter({ text: 'مرفوض تلقائياً بواسطة الذكاء الاصطناعي' });
 
-                const row = new ActionRowBuilder().addComponents(acceptButton);
+            const acceptButton = new ButtonBuilder()
+                .setCustomId(`manual_accept_${user.id}_${robloxUsername}`)
+                .setLabel('قبول يدوي ✅')
+                .setStyle(ButtonStyle.Success);
 
-                const rejectLogChannel = await client.channels.fetch(REJECT_LOG_CHANNEL_ID);
-                if (rejectLogChannel) {
-                    await rejectLogChannel.send({ embeds: [rejectEmbed], components: [row] });
-                }
-            } catch (err) {
-                console.error('حدث خطأ أثناء إرسال لوج الرفض:', err);
+            const row = new ActionRowBuilder().addComponents(acceptButton);
+
+            const rejectLogChannel = await client.channels.fetch(REJECT_LOG_CHANNEL_ID).catch(() => null);
+            if (rejectLogChannel) {
+                await rejectLogChannel.send({ embeds: [rejectEmbed], components: [row] });
+            } else {
+                console.error('❌ تعذر العثور على روم لوج المرفوضين! تأكد من الايدي الخاص بها.');
             }
         }
 
     } catch (error) {
-        console.error('خطأ في الاتصال بـ Groq API:', error);
+        console.error('خطأ كلي في معالجة الذكاء الاصطناعي:', error);
     }
 }
 
@@ -515,3 +534,4 @@ server.listen(PORT, '0.0.0.0', () => {
 
 // تسجيل دخول البوت
 client.login(DISCORD_TOKEN);
+    

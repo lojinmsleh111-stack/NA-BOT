@@ -559,4 +559,13 @@ const server = http.createServer((req, res) => {
     res.end('Discord Bot is Online!');
 });
 
-serv
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`HTTP Server running on port ${PORT}`);
+});
+
+if (DISCORD_TOKEN) {
+    client.login(DISCORD_TOKEN);
+} else {
+    console.error('❌ DISCORD_TOKEN غير موجود في متغيرات البيئة!');
+}
+

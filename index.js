@@ -212,8 +212,8 @@ client.on('interactionCreate', async (interaction) => {
 
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
                 } catch (err) {
-                    console.error(err);
-                    return interaction.reply({ content: 'حدث خطأ أثناء تعديل رتبة أو اسم العضو (تأكد من صلاحيات البوت وموقعه بين الرتب).', ephemeral: true });
+                    console.error('خطأ في القبول اليدوي:', err);
+                    return interaction.reply({ content: 'حدث خطأ أثناء تعديل رتبة أو اسم العضو (تأكد من صلاحيات البوت وأن رتبته أفقياً فوق رتبة الشخص).', ephemeral: true });
                 }
             } else if (action === 'reject') {
                 try {
@@ -226,7 +226,7 @@ client.on('interactionCreate', async (interaction) => {
 
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
                 } catch (err) {
-                    console.error(err);
+                    console.error('خطأ في الرفض اليدوي:', err);
                     return interaction.reply({ content: 'حدث خطأ أثناء سحب الرتبة أو تعديل اسم العضو.', ephemeral: true });
                 }
             }
@@ -384,36 +384,37 @@ async function reviewApplicationWithAI(user, answers) {
     let formattedAnswers = answers.map((a, i) => `س${i+1}: ${a.question}\nج${i+1}: ${a.answer}`).join('\n\n');
 
     const prompt = `
-    أنت مساعد إداري ذكي في سيرفر ديسكورد للعب الواقعي (Roleplay) في مجتمع "النظيم". مهمتك هي مراجعة تقديم تصريح لمستخدم جديد.
+    أنت مساعد إداري في سيرفر ديسكورد للعب الواقعي (Roleplay) في مجتمع "النظيم".
+    مهمتك هي مراجعة تقديم تصريح لمستخدم جديد.
 
     المستخدم: ${user.tag} (الايدي: ${user.id})
 
     الإجابات المقدمة:
     ${formattedAnswers}
 
-    قم بتحليل التقديم بعناية وفق الشروط:
-    1. الاسم جاد وحقيقي.
-    2. اسم حساب روبلوكس مدخل بوضوح.
-    3. كتب القسم كاملاً وبدقة في السؤال 5 بدون تحريف كبير.
+    الشروط للقبول:
+    1. الاسم جاد وحقيقي وليس وهمياً.
+    2. اسم حساب روبلوكس مكتوب بوضوح.
+    3. كتب القسم كاملاً وبدقة في السؤال 5 بدون تحريف أو نقص كبير.
 
-    صيغة الرد الإلزامية:
-    يجب أن تبدأ إجابتك بكلمة واحدة فقط في أول سطر: إما [مقبول] أو [مرفوض].
-    ثم اذكر التفاصيل والأسباب تحتها.
+    تنبيه هام جداً:
+    يجب أن تكون أول كلمة في ردك هي [مقبول] أو [مرفوض] حصراً وفي أول سطر، ثم اذكر السبب والتفاصيل بعدها.
     `;
 
     try {
         const chatCompletion = await groq.chat.completions.create({
             messages: [
-                { role: 'system', content: 'You are an administrative assistant for a Discord Roleplay community.' },
+                { role: 'system', content: 'You are an administrative assistant. Reply strictly with [مقبول] or [مرفوض] at the very beginning of your response.' },
                 { role: 'user', content: prompt }
             ],
             model: 'llama3-70b-8192',
             temperature: 0.1,
         });
 
-        const aiResponse = chatCompletion.choices[0]?.message?.content || '[مرفوض]\nلم يتمكن الذكاء الاصطناعي من إصدار تقرير.';
+        const aiResponse = chatCompletion.choices[0]?.message?.content || '[مرفوض]\nلم يتم استلام رد من الذكاء الاصطناعي.';
         
-        const isAccepted = aiResponse.startsWith('[مقبول]') || aiResponse.includes('[مقبول]');
+        // التحقق من القبول بمرونة أكثر
+        const isAccepted = aiResponse.toLowerCase().includes('[مقبول]');
         const robloxUsername = answers[2]?.answer ? answers[2].answer.trim() : user.username;
 
         const guild = await client.guilds.fetch(GUILD_ID);
@@ -421,16 +422,20 @@ async function reviewApplicationWithAI(user, answers) {
         try {
             member = await guild.members.fetch(user.id);
         } catch (e) {
-            console.error('لم يتم العثور على العضو في السيرفر أثناء المعالجة.');
+            console.error('لم يتم العثور على العضو في السيرفر:', e);
+            return;
         }
 
-        if (isAccepted && member) {
+        if (isAccepted) {
             try {
                 const uniqueId = await generateUniqueId(guild);
                 const newNickname = `NA | ${robloxUsername} | ${uniqueId}`;
 
-                await member.setNickname(newNickname);
-                if (ROLE_ID) await member.roles.add(ROLE_ID);
+                // تنفيذ التغييرات تلقائياً
+                await member.setNickname(newNickname).catch(err => console.error('خطأ في تغيير الاسم تلقائياً:', err));
+                if (ROLE_ID) {
+                    await member.roles.add(ROLE_ID).catch(err => console.error('خطأ في إعطاء الرتبة تلقائياً (تأكد من موقع رتبة البوت):', err));
+                }
 
                 const acceptEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
@@ -456,7 +461,7 @@ async function reviewApplicationWithAI(user, answers) {
                 }
 
             } catch (err) {
-                console.error('حدث خطأ أثناء إجراءات القبول:', err);
+                console.error('حدث خطأ أثناء تنفيذ إجراءات القبول:', err);
             }
 
         } else {
@@ -510,4 +515,3 @@ server.listen(PORT, '0.0.0.0', () => {
 
 // تسجيل دخول البوت
 client.login(DISCORD_TOKEN);
-                        

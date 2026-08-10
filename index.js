@@ -492,25 +492,22 @@ async function reviewApplicationWithAI(user, answers) {
     }
 }
 
-client.login(DISCORD_TOKEN);
-
-const // ==============================
+// ==============================
 //    خادم HTTP لإبقاء Render نشطاً
 // ==============================
 const http = require('http');
 
+const PORT = process.env.PORT || 10000;
+
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running online 24/7!');
+    res.end('Discord Bot is Online!');
 });
 
-// Render يستخدم المنفذ 10000 افتراضياً
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`HTTP Server running on port ${PORT}`);
 });
 
+// تسجيل دخول البوت
 client.login(DISCORD_TOKEN);
-
-
-                
+                        

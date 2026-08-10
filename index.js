@@ -493,4 +493,17 @@ async function reviewApplicationWithAI(user, answers) {
 }
 
 client.login(DISCORD_TOKEN);
+
+const http = require('http');
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running online 24/7!');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`HTTP Server running on port ${PORT}`);
+});
+
                 

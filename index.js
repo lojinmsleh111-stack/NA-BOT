@@ -113,7 +113,7 @@ const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 async function generateUniqueId(guild) {
     try {
         await guild.members.fetch(); 
-    } catch (e) { console.error('خطأ في جلب الأعضاء:', e); }
+    } catch (e) { console.error('خطأ في جلب الأعضاء:', e.message); }
 
     let isUnique = false;
     let randomId = '';
@@ -193,7 +193,13 @@ client.on('interactionCreate', async (interaction) => {
             const targetUserId = parts[2];
             const robloxName = parts.slice(3).join('_') || 'User';
 
-            const guild = await client.guilds.fetch(GUILD_ID);
+            let guild;
+            try {
+                guild = await client.guilds.fetch(GUILD_ID);
+            } catch (err) {
+                return interaction.reply({ content: 'تعذر الوصول للسيرفر. تحقق من GUILD_ID.', ephemeral: true });
+            }
+
             let member;
             try {
                 member = await guild.members.fetch(targetUserId);
@@ -375,8 +381,15 @@ client.on('messageCreate', async (message) => {
             .setDescription('جاري مراجعة إجاباتك الآن بواسطة الذكاء الاصطناعي وإرسال التقرير للإدارة...\nشكراً لصبرك.');
 
         await message.channel.send({ embeds: [finishingEmbed] });
-        await reviewApplicationWithAI(message.author, session.answers);
+        
+        // إكمال العملية مع الحفاظ على تشغيل الكود
         applySessions.delete(userId);
+        
+        try {
+            await reviewApplicationWithAI(message.author, session.answers);
+        } catch (err) {
+            console.error('خطأ أثناء تشغيل reviewApplicationWithAI:', err);
+        }
     }
 });
 
@@ -384,6 +397,7 @@ client.on('messageCreate', async (message) => {
 //    وظيفة الذكاء الاصطناعي
 // ==============================
 async function reviewApplicationWithAI(user, answers) {
+    console.log(`[AI Review] بدء معالجة التقديم للمستخدم: ${user.tag}`);
     let formattedAnswers = answers.map((a, i) => `س${i+1}: ${a.question}\nج${i+1}: ${a.answer}`).join('\n\n');
 
     const prompt = `
@@ -401,14 +415,14 @@ async function reviewApplicationWithAI(user, answers) {
     3. كتب القسم كاملاً وبدقة في السؤال 5 بدون تحريف أو نقص كبير.
 
     تنبيه هام جداً:
-    يجب أن تكتب النتيجة في السطر الأول كـ: مقبول أو مرفوض.
-    ثم اذكر السبب والتفاصيل بعد ذلك.
+    يجب أن تكون إجابتك تبدأ بكلمة مقبول أو كلمة مرفوض في أول السطر.
     `;
 
     try {
+        console.log('[AI Review] جاري الاتصال بـ Groq API...');
         const chatCompletion = await groq.chat.completions.create({
             messages: [
-                { role: 'system', content: 'You are an administrative assistant. Start response with "مقبول" or "مرفوض".' },
+                { role: 'system', content: 'You are an administrative assistant. Start response strictly with "مقبول" or "مرفوض".' },
                 { role: 'user', content: prompt }
             ],
             model: 'llama3-70b-8192',
@@ -416,19 +430,27 @@ async function reviewApplicationWithAI(user, answers) {
         });
 
         const aiResponse = chatCompletion.choices[0]?.message?.content || 'مرفوض\nلم يتم استلام رد من الذكاء الاصطناعي.';
-        
-        // فحص النتيجة بمرونة كاملة
+        console.log(`[AI Review] الرد المستلم من الذكاء الاصطناعي:\n${aiResponse}`);
+
         const cleanResponse = aiResponse.trim();
         const isAccepted = cleanResponse.includes('مقبول') && !cleanResponse.startsWith('غير مقبول');
         
         const robloxUsername = answers[2]?.answer ? answers[2].answer.trim() : user.username;
 
-        const guild = await client.guilds.fetch(GUILD_ID);
-        let member = null;
+        let guild = null;
         try {
-            member = await guild.members.fetch(user.id);
+            if (GUILD_ID) guild = await client.guilds.fetch(GUILD_ID);
         } catch (e) {
-            console.error('لم يتم العثور على العضو في السيرفر:', e.message);
+            console.error('⚠️ تعذر العثور على السيرفر (GUILD_ID):', e.message);
+        }
+
+        let member = null;
+        if (guild) {
+            try {
+                member = await guild.members.fetch(user.id);
+            } catch (e) {
+                console.error('⚠️ تعذر جلب العضو من السيرفر:', e.message);
+            }
         }
 
         if (isAccepted) {
@@ -438,21 +460,18 @@ async function reviewApplicationWithAI(user, answers) {
                 newNickname = `NA | ${robloxUsername} | ${uniqueId}`;
             }
 
-            // محاولة تغيير الاسم والرتبة بدون إيقاف الكود عند الفشل
             if (member) {
-                await member.setNickname(newNickname).catch(err => console.error('⚠️ لم يغير الاسم (غالباً بسبب صلاحيات أو أن العضو أونر/إداري أعلى من البوت):', err.message));
+                await member.setNickname(newNickname).catch(err => console.error('⚠️ تعذر تغيير الاسم:', err.message));
                 if (ROLE_ID) {
-                    await member.roles.add(ROLE_ID).catch(err => console.error('⚠️ لم يعطِ الرتبة (تأكد من أن رتبة البوت أعلى من الرتبة المراد إعطاؤها):', err.message));
+                    await member.roles.add(ROLE_ID).catch(err => console.error('⚠️ تعذر إضافة الرتبة:', err.message));
                 }
             }
 
-            // إرسال تنبيه للمستخدم بالخاص
             try {
                 const dmChannel = await user.createDM();
-                await dmChannel.send(`🎉 **تهانينا!** تم قبول تقديمك في **مجتمع النظيم** بنجاح.\nتم إعطاؤك التصريح وتعديل اسمك داخل السيرفر.`);
-            } catch (err) { console.log('تعذر إرسال DM للمستخدم بالقبول'); }
+                await dmChannel.send(`🎉 **تهانينا!** تم قبول تقديمك في **مجتمع النظيم** بنجاح.`);
+            } catch (err) { console.log('تعذر إرسال DM بالقبول'); }
 
-            // إرسال اللوج
             const acceptEmbed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle(`✅ تقديم مقبول تلقائياً: ${user.tag}`)
@@ -471,21 +490,22 @@ async function reviewApplicationWithAI(user, answers) {
 
             const row = new ActionRowBuilder().addComponents(rejectButton);
 
-            const acceptLogChannel = await client.channels.fetch(ACCEPT_LOG_CHANNEL_ID).catch(() => null);
-            if (acceptLogChannel) {
-                await acceptLogChannel.send({ embeds: [acceptEmbed], components: [row] });
-            } else {
-                console.error('❌ تعذر العثور على روم لوج المقبولين! تأكد من الايدي الخاص بها.');
+            try {
+                const acceptLogChannel = await client.channels.fetch(ACCEPT_LOG_CHANNEL_ID);
+                if (acceptLogChannel) {
+                    await acceptLogChannel.send({ embeds: [acceptEmbed], components: [row] });
+                    console.log('✅ تم إرسال اللوج إلى قناة القبول بنجاح!');
+                }
+            } catch (err) {
+                console.error('❌ فشل إرسال اللوج لروم القبول:', err.message);
             }
 
         } else {
-            // إرسال تنبيه للمستخدم بالخاص
             try {
                 const dmChannel = await user.createDM();
-                await dmChannel.send(`❌ **عذراً!** تم رفض تقديمك في **مجتمع النظيم**.\n**السبب:**\n${aiResponse}`);
-            } catch (err) { console.log('تعذر إرسال DM للمستخدم بالرفض'); }
+                await dmChannel.send(`❌ **عذراً!** تم رفض تقديمك في **مجتمع النظيم**.\n\n**السبب:**\n${aiResponse}`);
+            } catch (err) { console.log('تعذر إرسال DM بالرفض'); }
 
-            // إرسال اللوج
             const rejectEmbed = new EmbedBuilder()
                 .setColor(0xFF0000)
                 .setTitle(`❌ تقديم مرفوض تلقائياً: ${user.tag}`)
@@ -503,16 +523,19 @@ async function reviewApplicationWithAI(user, answers) {
 
             const row = new ActionRowBuilder().addComponents(acceptButton);
 
-            const rejectLogChannel = await client.channels.fetch(REJECT_LOG_CHANNEL_ID).catch(() => null);
-            if (rejectLogChannel) {
-                await rejectLogChannel.send({ embeds: [rejectEmbed], components: [row] });
-            } else {
-                console.error('❌ تعذر العثور على روم لوج المرفوضين! تأكد من الايدي الخاص بها.');
+            try {
+                const rejectLogChannel = await client.channels.fetch(REJECT_LOG_CHANNEL_ID);
+                if (rejectLogChannel) {
+                    await rejectLogChannel.send({ embeds: [rejectEmbed], components: [row] });
+                    console.log('✅ تم إرسال اللوج إلى قناة الرفض بنجاح!');
+                }
+            } catch (err) {
+                console.error('❌ فشل إرسال اللوج لروم الرفض:', err.message);
             }
         }
 
     } catch (error) {
-        console.error('خطأ كلي في معالجة الذكاء الاصطناعي:', error);
+        console.error('❌ خطأ كلي في اتصال Groq أو تنفيذ الذكاء الاصطناعي:', error);
     }
 }
 
@@ -529,9 +552,4 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`HTTP Server running on port ${PORT}`);
-});
-
-// تسجيل دخول البوت
-client.login(DISCORD_TOKEN);
-    
+   

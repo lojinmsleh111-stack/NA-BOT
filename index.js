@@ -494,6 +494,9 @@ async function reviewApplicationWithAI(user, answers) {
 
 client.login(DISCORD_TOKEN);
 
+const // ==============================
+//    خادم HTTP لإبقاء Render نشطاً
+// ==============================
 const http = require('http');
 
 const server = http.createServer((req, res) => {
@@ -501,9 +504,13 @@ const server = http.createServer((req, res) => {
     res.end('Bot is running online 24/7!');
 });
 
-const PORT = process.env.PORT || 3000;
+// Render يستخدم المنفذ 10000 افتراضياً
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log(`HTTP Server running on port ${PORT}`);
 });
+
+client.login(DISCORD_TOKEN);
+
 
                 

@@ -20,13 +20,17 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// رومات اللوج الجديدة
+// رومات اللوج
 const ACCEPT_LOG_CHANNEL_ID = '1521844992811728906'; // روم لوق المقبولين
 const REJECT_LOG_CHANNEL_ID = '1521845037535854642'; // روم لوق المرفوضين
 
-// رتبة التصريح (اضف ايدي الرتبة في متغيرات البيئة Render أو استبدله هنا)
-const ROLE_ID = process.env.ROLE_ID || 'YOUR_ROLE_ID_HERE';
+// روم بانل التقديم
+const PANEL_CHANNEL_ID = '1521392423279005736';
 
+// رتبة التصريح
+const ROLE_ID = process.env.ROLE_ID;
+
+// روم أوامر الرول بلاي الأخرى
 const TARGET_CHANNEL_ID = '1510857986778726641';
 
 // ==============================
@@ -84,9 +88,6 @@ const commands = [
         .setName('schedule')
         .setDescription('إرسال أوقات الرول بلاي عند عدم وجود منظم'),
     new SlashCommandBuilder()
-        .setName('apply')
-        .setDescription('بدء تقديم تصريح جديد عبر الذكاء الاصطناعي'),
-    new SlashCommandBuilder()
         .setName('setup-apply')
         .setDescription('إنشاء بانل التقديم (للإدارة)')
 ].map(command => command.toJSON());
@@ -124,6 +125,16 @@ async function generateUniqueId(guild) {
     return randomId;
 }
 
+async function sendDMQuestion(channel, questionText) {
+    const embed = new EmbedBuilder()
+        .setColor(0x0099FF)
+        .setTitle('📝 سؤال التقديم')
+        .setDescription(questionText)
+        .setFooter({ text: 'يرجى كتابة الإجابة هنا في الرسائل الخاصة' });
+
+    await channel.send({ embeds: [embed] });
+}
+
 async function startApplicationProcess(user, interaction = null) {
     const userId = user.id;
     if (applySessions.has(userId)) {
@@ -135,11 +146,12 @@ async function startApplicationProcess(user, interaction = null) {
         const dmChannel = await user.createDM();
         const startEmbed = new EmbedBuilder()
             .setColor(0x0099FF)
-            .setTitle('Application Started')
-            .setDescription('نحن سعداء بتقدملك لمجتمع النظيم.\nيرجى الإجابة على الأسئلة التالية بعناية، سيتم مراجعة إجاباتك بواسطة الذكاء الاصطناعي.\n\nبدءاً من الآن، أرسل إجاباتك كرسايل عادية في هذه المحادثة.');
+            .setTitle('📝 بدء تقديم تصريح مجتمع النظيم')
+            .setDescription('نحن سعداء بتقدملك لمجتمع النظيم.\nيرجى الإجابة على الأسئلة التالية بعناية، سيتم مراجعة إجاباتك بواسطة الذكاء الاصطناعي.\n\nأرسل إجاباتك كرسايل عادية في هذه المحادثة.')
+            .setTimestamp();
 
         await dmChannel.send({ embeds: [startEmbed] });
-        await dmChannel.send(`**${applyQuestions[0].text}**`);
+        await sendDMQuestion(dmChannel, applyQuestions[0].text);
 
         applySessions.set(userId, {
             currentQuestionIndex: 0,
@@ -152,7 +164,7 @@ async function startApplicationProcess(user, interaction = null) {
         }
     } catch (error) {
         if (interaction) {
-            await interaction.reply({ content: 'لا يمكنني بدء التقديم. يرجى التأكد من تفعيل الرسائل الخاصة.', ephemeral: true });
+            await interaction.reply({ content: 'لا يمكنني بدء التقديم. يرجى التأكد من فتح الرسائل الخاصة (DM).', ephemeral: true });
         }
     }
 }
@@ -165,19 +177,16 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-    // 1. التعامل مع نقرات الأزرار (Button Interaction)
     if (interaction.isButton()) {
         const customId = interaction.customId;
 
-        // بدء التقديم
         if (customId === 'start_apply_button') {
             return await startApplicationProcess(interaction.user, interaction);
         }
 
-        // الأزرار الإدارية (قبول يدوي / رفض يدوي)
         if (customId.startsWith('manual_accept_') || customId.startsWith('manual_reject_')) {
             const parts = customId.split('_');
-            const action = parts[1]; // accept or reject
+            const action = parts[1]; 
             const targetUserId = parts[2];
             const robloxName = parts.slice(3).join('_') || 'User';
 
@@ -190,7 +199,6 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (action === 'accept') {
-                // تغيير الاسم وإضافة الرتبة
                 try {
                     const uniqueId = await generateUniqueId(guild);
                     const newNickname = `NA | ${robloxName} | ${uniqueId}`;
@@ -199,23 +207,22 @@ client.on('interactionCreate', async (interaction) => {
 
                     const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                         .setColor(0x00FF00)
-                        .setTitle(`تم القبول يدوياً بواسطة: ${interaction.user.tag}`)
+                        .setTitle(`✅ تم القبول يدوياً بواسطة: ${interaction.user.tag}`)
                         .addFields({ name: 'الاسم الجديد', value: `\`${newNickname}\`` });
 
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
                 } catch (err) {
                     console.error(err);
-                    return interaction.reply({ content: 'حدث خطأ أثناء تعديل رتبة أو اسم العضو (تأكد من الصلاحيات).', ephemeral: true });
+                    return interaction.reply({ content: 'حدث خطأ أثناء تعديل رتبة أو اسم العضو (تأكد من صلاحيات البوت وموقعه بين الرتب).', ephemeral: true });
                 }
             } else if (action === 'reject') {
-                // إعادة الاسم وإزالة الرتبة
                 try {
-                    await member.setNickname(null); // إلغاء اللقب
+                    await member.setNickname(null); 
                     if (ROLE_ID) await member.roles.remove(ROLE_ID);
 
                     const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                         .setColor(0xFF0000)
-                        .setTitle(`تم الرفض يدوياً بواسطة: ${interaction.user.tag}`);
+                        .setTitle(`❌ تم الرفض يدوياً بواسطة: ${interaction.user.tag}`);
 
                     await interaction.update({ embeds: [updatedEmbed], components: [] });
                 } catch (err) {
@@ -229,7 +236,12 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.isChatInputCommand()) return;
 
+    // أمر إرسال البانل (محصور بروم التقديم المحدد)
     if (interaction.commandName === 'setup-apply') {
+        if (interaction.channelId !== PANEL_CHANNEL_ID) {
+            return interaction.reply({ content: `لا يمكنك استخدام هذا الأمر إلا في روم البانل <#${PANEL_CHANNEL_ID}>!`, ephemeral: true });
+        }
+
         const panelEmbed = new EmbedBuilder()
             .setColor(0x2F3136)
             .setTitle('📝 تقديم تصريح مجتمع النظيم')
@@ -247,10 +259,7 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: 'تم إنشاء بانل التقديم بنجاح!', ephemeral: true });
     }
 
-    if (interaction.commandName === 'apply') {
-        return await startApplicationProcess(interaction.user, interaction);
-    }
-
+    // التحقق من الروم المخصص لأوامر الرول بلاي الأخرى
     if (interaction.channelId !== TARGET_CHANNEL_ID) {
         return interaction.reply({ content: 'لا يمكنك استخدام هذا الأمر إلا في الروم المخصص له!', ephemeral: true });
     }
@@ -280,9 +289,7 @@ __**اتمنى لكم رول ممتع🤍**__
 
 <@&1508335599289897101> 
 
-
 <@&1508327075151613972> 
-
 
 <@&1508327730075140186>
 
@@ -359,12 +366,12 @@ client.on('messageCreate', async (message) => {
     session.currentQuestionIndex++;
 
     if (session.currentQuestionIndex < applyQuestions.length) {
-        await message.channel.send(`**${applyQuestions[session.currentQuestionIndex].text}**`);
+        await sendDMQuestion(message.channel, applyQuestions[session.currentQuestionIndex].text);
     } else {
         const finishingEmbed = new EmbedBuilder()
             .setColor(0xFF9900)
-            .setTitle('Application Submitted')
-            .setDescription('تم استلام جميع إجاباتك. جاري مراجعتها الآن بواسطة الذكاء الاصطناعي وإرسال التقرير للإدارة.\nشكراً لصبرك.');
+            .setTitle('⏳ تم استلام إجاباتك بنجاح')
+            .setDescription('جاري مراجعة إجاباتك الآن بواسطة الذكاء الاصطناعي وإرسال التقرير للإدارة.\nشكراً لصبرك.');
 
         await message.channel.send({ embeds: [finishingEmbed] });
         await reviewApplicationWithAI(message.author, session.answers);
@@ -389,11 +396,11 @@ async function reviewApplicationWithAI(user, answers) {
     قم بتحليل التقديم بعناية وفق الشروط:
     1. الاسم جاد وحقيقي.
     2. اسم حساب روبلوكس مدخل بوضوح.
-    3. كتب القسم كاملاً وبدقة في السؤال 5 بدون تحريف.
+    3. كتب القسم كاملاً وبدقة في السؤال 5 بدون تحريف كبير.
 
-    صيغة الرد المطلوبة:
-    ابدأ السطر الأول بكلمة [مقبول] أو [مرفوض].
-    ثم اذكر الأسباب والتفاصيل في الأسطر التالية.
+    صيغة الرد الإلزامية:
+    يجب أن تبدأ إجابتك بكلمة واحدة فقط في أول سطر: إما [مقبول] أو [مرفوض].
+    ثم اذكر التفاصيل والأسباب تحتها.
     `;
 
     try {
@@ -406,15 +413,20 @@ async function reviewApplicationWithAI(user, answers) {
             temperature: 0.1,
         });
 
-        const aiResponse = chatCompletion.choices[0]?.message?.content || 'لم يتمكن الذكاء الاصطناعي من إصدار تقرير.';
-        const isAccepted = aiResponse.includes('[مقبول]');
-        const robloxUsername = answers[2].answer.trim();
+        const aiResponse = chatCompletion.choices[0]?.message?.content || '[مرفوض]\nلم يتمكن الذكاء الاصطناعي من إصدار تقرير.';
+        
+        const isAccepted = aiResponse.startsWith('[مقبول]') || aiResponse.includes('[مقبول]');
+        const robloxUsername = answers[2]?.answer ? answers[2].answer.trim() : user.username;
 
         const guild = await client.guilds.fetch(GUILD_ID);
-        const member = await guild.members.fetch(user.id);
+        let member;
+        try {
+            member = await guild.members.fetch(user.id);
+        } catch (e) {
+            console.error('لم يتم العثور على العضو في السيرفر أثناء المعالجة.');
+        }
 
-        if (isAccepted) {
-            // حالة القبول التلقائي من الذكاء الاصطناعي
+        if (isAccepted && member) {
             try {
                 const uniqueId = await generateUniqueId(guild);
                 const newNickname = `NA | ${robloxUsername} | ${uniqueId}`;
@@ -433,7 +445,6 @@ async function reviewApplicationWithAI(user, answers) {
                     )
                     .setFooter({ text: 'مقبول تلقائياً بواسطة الذكاء الاصطناعي' });
 
-                // زر الرفض اليدوي للإدارة
                 const rejectButton = new ButtonBuilder()
                     .setCustomId(`manual_reject_${user.id}_${robloxUsername}`)
                     .setLabel('رفض يدوي ❌')
@@ -451,28 +462,30 @@ async function reviewApplicationWithAI(user, answers) {
             }
 
         } else {
-            // حالة الرفض التلقائي من الذكاء الاصطناعي
-            const rejectEmbed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle(`❌ تقديم مرفوض تلقائياً: ${user.tag}`)
-                .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setDescription(`**تحليل الذكاء الاصطناعي:**\n${aiResponse}`)
-                .addFields(
-                    { name: 'ايدي المستخدم', value: user.id, inline: true }
-                )
-                .setFooter({ text: 'مرفوض تلقائياً بواسطة الذكاء الاصطناعي' });
+            try {
+                const rejectEmbed = new EmbedBuilder()
+                    .setColor(0xFF0000)
+                    .setTitle(`❌ تقديم مرفوض تلقائياً: ${user.tag}`)
+                    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                    .setDescription(`**تحليل الذكاء الاصطناعي:**\n${aiResponse}`)
+                    .addFields(
+                        { name: 'ايدي المستخدم', value: user.id, inline: true }
+                    )
+                    .setFooter({ text: 'مرفوض تلقائياً بواسطة الذكاء الاصطناعي' });
 
-            // زر القبول اليدوي للإدارة
-            const acceptButton = new ButtonBuilder()
-                .setCustomId(`manual_accept_${user.id}_${robloxUsername}`)
-                .setLabel('قبول يدوي ✅')
-                .setStyle(ButtonStyle.Success);
+                const acceptButton = new ButtonBuilder()
+                    .setCustomId(`manual_accept_${user.id}_${robloxUsername}`)
+                    .setLabel('قبول يدوي ✅')
+                    .setStyle(ButtonStyle.Success);
 
-            const row = new ActionRowBuilder().addComponents(acceptButton);
+                const row = new ActionRowBuilder().addComponents(acceptButton);
 
-            const rejectLogChannel = await client.channels.fetch(REJECT_LOG_CHANNEL_ID);
-            if (rejectLogChannel) {
-                await rejectLogChannel.send({ embeds: [rejectEmbed], components: [row] });
+                const rejectLogChannel = await client.channels.fetch(REJECT_LOG_CHANNEL_ID);
+                if (rejectLogChannel) {
+                    await rejectLogChannel.send({ embeds: [rejectEmbed], components: [row] });
+                }
+            } catch (err) {
+                console.error('حدث خطأ أثناء إرسال لوج الرفض:', err);
             }
         }
 
@@ -482,4 +495,4 @@ async function reviewApplicationWithAI(user, answers) {
 }
 
 client.login(DISCORD_TOKEN);
-        
+                                                 

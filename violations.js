@@ -6,7 +6,7 @@ const {
 } = require('discord.js');
 
 const MILITARY_ROLE_ID = '1511149768066470009';
-const VIOLATIONS_CHANNEL_ID = '1508322335688626337';
+const VIOLATIONS_CHANNEL_ID = '1537832173011210460';
 
 const violations = [
     {

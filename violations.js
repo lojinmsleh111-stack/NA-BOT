@@ -2,6 +2,8 @@ const {
     SlashCommandBuilder,
     ActionRowBuilder,
     StringSelectMenuBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     EmbedBuilder
 } = require('discord.js');
 
@@ -82,7 +84,7 @@ const violationCommand = new SlashCommandBuilder()
 
 async function handleViolationCommand(interaction) {
 
-    // التحقق من الروم
+    // التحقق من روم المخالفات
     if (interaction.channelId !== VIOLATIONS_CHANNEL_ID) {
         return interaction.reply({
             content:
@@ -199,10 +201,8 @@ async function handleViolationSelect(interaction) {
     const targetId = parts[1];
     const militaryId = parts[2];
 
-    // ==============================
-    // العسكري الذي بدأ العملية فقط
-    // ==============================
-
+    // العسكري الذي بدأ تسجيل المخالفة فقط
+    // يستطيع اختيار نوع المخالفة
     if (interaction.user.id !== militaryId) {
         return interaction.reply({
             content:
@@ -211,10 +211,7 @@ async function handleViolationSelect(interaction) {
         });
     }
 
-    // ==============================
     // التأكد من رتبة العسكري
-    // ==============================
-
     if (
         !interaction.member.roles.cache.has(
             MILITARY_ROLE_ID
@@ -268,7 +265,7 @@ async function handleViolationSelect(interaction) {
     }
 
     // ==============================
-    // جلب الصورة من الرسالة الأصلية
+    // جلب الصورة
     // ==============================
 
     const originalEmbed =
@@ -341,6 +338,23 @@ async function handleViolationSelect(interaction) {
     }
 
     // ==============================
+    // زر تسديد المخالفة
+    // ==============================
+
+    const paidButton =
+        new ButtonBuilder()
+            .setCustomId(
+                `violation_paid:${target.id}`
+            )
+            .setLabel('تم تسديد المخالفة')
+            .setEmoji('✅')
+            .setStyle(ButtonStyle.Success);
+
+    const paidRow =
+        new ActionRowBuilder()
+            .addComponents(paidButton);
+
+    // ==============================
     // تحديث رسالة المخالفة
     // ==============================
 
@@ -349,9 +363,9 @@ async function handleViolationSelect(interaction) {
             .from(
                 interaction.message.embeds[0]
             )
-            .setColor(0x00FF00)
+            .setColor(0xFF0000)
             .setTitle(
-                '✅ تم تسجيل المخالفة'
+                '🚨 تم تسجيل المخالفة'
             )
             .setDescription(
                 `**المخالف:** ${target}\n\n` +
@@ -368,6 +382,57 @@ async function handleViolationSelect(interaction) {
 
     return interaction.update({
         embeds: [completedEmbed],
+        components: [paidRow]
+    });
+}
+
+// ==============================
+//       تسديد المخالفة
+// ==============================
+
+async function handleViolationPaid(interaction) {
+
+    // ==============================
+    // التأكد من رتبة العسكري
+    // ==============================
+
+    if (
+        !interaction.member.roles.cache.has(
+            MILITARY_ROLE_ID
+        )
+    ) {
+        return interaction.reply({
+            content:
+                '❌ فقط العساكر يستطيعون تأكيد تسديد المخالفة.',
+            ephemeral: true
+        });
+    }
+
+    // ==============================
+    // تحديث الرسالة
+    // ==============================
+
+    const originalEmbed =
+        interaction.message.embeds[0];
+
+    const paidEmbed =
+        EmbedBuilder
+            .from(originalEmbed)
+            .setColor(0x00FF00)
+            .setTitle(
+                '✅ تم تسديد المخالفة'
+            )
+            .setDescription(
+                `${originalEmbed.description || ''}\n\n` +
+                `━━━━━━━━━━━━━━━━━━━━\n` +
+                `💰 **حالة المخالفة:** مسددة\n` +
+                `👮 **تم التأكيد بواسطة:** ${interaction.user}\n` +
+                `🕐 **وقت التسديد:** <t:${Math.floor(Date.now() / 1000)}:F>`
+            )
+            .setTimestamp();
+
+    return interaction.update({
+        embeds: [paidEmbed],
         components: []
     });
 }
@@ -379,5 +444,6 @@ async function handleViolationSelect(interaction) {
 module.exports = {
     violationCommand,
     handleViolationCommand,
-    handleViolationSelect
+    handleViolationSelect,
+    handleViolationPaid
 };

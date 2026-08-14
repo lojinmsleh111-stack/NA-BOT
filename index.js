@@ -20,7 +20,8 @@ const { Groq } = require('groq-sdk');
 const {
     violationCommand,
     handleViolationCommand,
-    handleViolationSelect
+    handleViolationSelect,
+    handleViolationPaid
 } = require('./violations');
 
 // ==============================
@@ -369,8 +370,30 @@ client.on(
             // ==========================
 
             if (interaction.isButton()) {
-                const customId =
-                    interaction.customId;
+    const customId = interaction.customId;
+
+    if (
+        customId.startsWith(
+            'violation_paid:'
+        )
+    ) {
+        return await handleViolationPaid(
+            interaction
+        );
+    }
+
+    if (
+        customId ===
+        'start_apply_button'
+    ) {
+        return await startApplicationProcess(
+            interaction.user,
+            interaction
+        );
+    }
+
+    // باقي أزرار النظام...
+            }
 
                 if (
                     customId ===

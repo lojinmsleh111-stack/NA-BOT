@@ -56,41 +56,29 @@ const violations = [
     }
 ];
 
-// الأمر الداخلي mukhalafa
-// ويظهر بالعربي "مخالفة" حسب لغة Discord
+// ==============================
+//          /mukhalafa
+// ==============================
+
 const violationCommand = new SlashCommandBuilder()
     .setName('mukhalafa')
-    .setNameLocalizations({
-        ar: 'مخالفة'
-    })
     .setDescription('تسجيل مخالفة على عضو')
-    .setDescriptionLocalizations({
-        ar: 'تسجيل مخالفة على عضو'
-    })
     .addUserOption(option =>
         option
-            .setName('المخالف')
-            .setNameLocalizations({
-                ar: 'المخالف'
-            })
+            .setName('member')
             .setDescription('اختر الشخص المخالف')
-            .setDescriptionLocalizations({
-                ar: 'اختر الشخص المخالف'
-            })
             .setRequired(true)
     )
     .addAttachmentOption(option =>
         option
-            .setName('الصورة')
-            .setNameLocalizations({
-                ar: 'الصورة'
-            })
+            .setName('image')
             .setDescription('ارفع صورة المخالفة')
-            .setDescriptionLocalizations({
-                ar: 'ارفع صورة المخالفة'
-            })
             .setRequired(true)
     );
+
+// ==============================
+//      تنفيذ أمر المخالفة
+// ==============================
 
 async function handleViolationCommand(interaction) {
 
@@ -99,7 +87,7 @@ async function handleViolationCommand(interaction) {
         return interaction.reply({
             content:
                 `❌ لا يمكنك استخدام أمر المخالفات هنا.\n` +
-                `استخدمه في <#${VIOLATIONS_CHANNEL_ID}>.`,
+                `استخدم الأمر في <#${VIOLATIONS_CHANNEL_ID}>.`,
             ephemeral: true
         });
     }
@@ -112,8 +100,11 @@ async function handleViolationCommand(interaction) {
         });
     }
 
-    const target = interaction.options.getMember('المخالف');
-    const image = interaction.options.getAttachment('الصورة');
+    const target =
+        interaction.options.getMember('member');
+
+    const image =
+        interaction.options.getAttachment('image');
 
     if (!target) {
         return interaction.reply({
@@ -122,46 +113,69 @@ async function handleViolationCommand(interaction) {
         });
     }
 
-    // التأكد أن الملف صورة
-    if (!image.contentType || !image.contentType.startsWith('image/')) {
+    if (!image) {
         return interaction.reply({
-            content: '❌ يجب رفع صورة فقط.',
+            content: '❌ يجب رفع صورة للمخالفة.',
             ephemeral: true
         });
     }
 
-    const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(
-            `violation_select:${target.id}:${interaction.user.id}`
-        )
-        .setPlaceholder('اختر المخالفة')
-        .addOptions(
-            violations.map(violation => ({
-                label: violation.name,
-                description: violation.punishment,
-                value: violation.id
-            }))
-        );
+    // التأكد أن الملف صورة
+    if (
+        !image.contentType ||
+        !image.contentType.startsWith('image/')
+    ) {
+        return interaction.reply({
+            content: '❌ الملف المرفوع يجب أن يكون صورة.',
+            ephemeral: true
+        });
+    }
 
-    const row = new ActionRowBuilder()
-        .addComponents(selectMenu);
+    // ==============================
+    //       شريط المخالفات
+    // ==============================
 
-    const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('🚨 تسجيل مخالفة')
-        .addFields({
-            name: '👤 المخالف',
-            value: `${target}`,
-            inline: true
-        })
-        .setDescription(
-            '**اختر نوع المخالفة من شريط الاختيارات بالأسفل.**'
-        )
-        .setImage(image.url)
-        .setFooter({
-            text: `العسكري: ${interaction.user.tag}`
-        })
-        .setTimestamp();
+    const selectMenu =
+        new StringSelectMenuBuilder()
+            .setCustomId(
+                `violation_select:${target.id}:${interaction.user.id}`
+            )
+            .setPlaceholder('اختر المخالفة')
+            .addOptions(
+                violations.map(violation => ({
+                    label: violation.name,
+                    description: violation.punishment,
+                    value: violation.id
+                }))
+            );
+
+    const row =
+        new ActionRowBuilder()
+            .addComponents(selectMenu);
+
+    // ==============================
+    //       رسالة الاختيار
+    // ==============================
+
+    const embed =
+        new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('🚨 تسجيل مخالفة')
+            .setDescription(
+                '**اختر نوع المخالفة من شريط الاختيارات بالأسفل.**'
+            )
+            .addFields({
+                name: '👤 المخالف',
+                value: `${target}`,
+                inline: true
+            })
+            .addFields({
+                name: '👮 العسكري',
+                value: `${interaction.user}`,
+                inline: true
+            })
+            .setImage(image.url)
+            .setTimestamp();
 
     return interaction.reply({
         embeds: [embed],
@@ -169,9 +183,14 @@ async function handleViolationCommand(interaction) {
     });
 }
 
+// ==============================
+//       اختيار المخالفة
+// ==============================
+
 async function handleViolationSelect(interaction) {
 
-    const parts = interaction.customId.split(':');
+    const parts =
+        interaction.customId.split(':');
 
     if (parts.length !== 3) {
         return;
@@ -180,84 +199,131 @@ async function handleViolationSelect(interaction) {
     const targetId = parts[1];
     const militaryId = parts[2];
 
-    // فقط العسكري الذي بدأ المخالفة يستطيع الاختيار
+    // ==============================
+    // العسكري الذي بدأ العملية فقط
+    // ==============================
+
     if (interaction.user.id !== militaryId) {
         return interaction.reply({
-            content: '❌ هذه القائمة ليست لك.',
+            content:
+                '❌ هذه قائمة المخالفة ليست لك.',
             ephemeral: true
         });
     }
 
-    // التحقق من الرتبة
-    if (!interaction.member.roles.cache.has(MILITARY_ROLE_ID)) {
+    // ==============================
+    // التأكد من رتبة العسكري
+    // ==============================
+
+    if (
+        !interaction.member.roles.cache.has(
+            MILITARY_ROLE_ID
+        )
+    ) {
         return interaction.reply({
-            content: '❌ هذا الخيار مخصص للعساكر فقط.',
+            content:
+                '❌ هذا الخيار مخصص للعساكر فقط.',
             ephemeral: true
         });
     }
 
-    const violationId = interaction.values[0];
+    // ==============================
+    // معرفة المخالفة
+    // ==============================
 
-    const violation = violations.find(
-        item => item.id === violationId
-    );
+    const violationId =
+        interaction.values[0];
+
+    const violation =
+        violations.find(
+            item =>
+                item.id === violationId
+        );
 
     if (!violation) {
         return interaction.reply({
-            content: '❌ لم يتم العثور على نوع المخالفة.',
+            content:
+                '❌ لم يتم العثور على نوع المخالفة.',
             ephemeral: true
         });
     }
+
+    // ==============================
+    // جلب المخالف
+    // ==============================
 
     let target;
 
     try {
-        target = await interaction.guild.members.fetch(targetId);
-    } catch {
+        target =
+            await interaction.guild.members.fetch(
+                targetId
+            );
+    } catch (error) {
         return interaction.reply({
-            content: '❌ لم أستطع العثور على المخالف.',
+            content:
+                '❌ لم أستطع العثور على المخالف.',
             ephemeral: true
         });
     }
 
-    const originalEmbed = interaction.message.embeds[0];
+    // ==============================
+    // جلب الصورة من الرسالة الأصلية
+    // ==============================
 
-    const imageUrl = originalEmbed?.image?.url || null;
+    const originalEmbed =
+        interaction.message.embeds[0];
 
-    // رسالة الخاص
-    const dmEmbed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('🚨 تم تسجيل مخالفة عليك')
-        .setDescription(
-            'تم تسجيل مخالفة عليك في **مجتمع النظيم**.'
-        )
-        .addFields(
-            {
-                name: '👤 المخالف',
-                value: `<@${target.id}>`,
-                inline: true
-            },
-            {
-                name: '📋 المخالفة',
-                value: violation.name,
-                inline: true
-            },
-            {
-                name: '⚖️ العقوبة',
-                value: violation.punishment,
-                inline: true
-            },
-            {
-                name: '👮 العسكري',
-                value: `<@${interaction.user.id}>`,
-                inline: true
-            }
-        )
-        .setTimestamp();
+    const imageUrl =
+        originalEmbed?.image?.url || null;
+
+    // ==============================
+    // رسالة الخاص للمخالف
+    // ==============================
+
+    const dmEmbed =
+        new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle(
+                '🚨 تم تسجيل مخالفة عليك'
+            )
+            .setDescription(
+                'تم تسجيل مخالفة عليك في **مجتمع النظيم**.'
+            )
+            .addFields(
+                {
+                    name: '📋 المخالفة',
+                    value: violation.name,
+                    inline: true
+                },
+                {
+                    name: '⚖️ العقوبة',
+                    value: violation.punishment,
+                    inline: true
+                },
+                {
+                    name: '👮 العسكري',
+                    value: `${interaction.user}`,
+                    inline: true
+                },
+                {
+                    name: '👤 المخالف',
+                    value: `${target}`,
+                    inline: true
+                }
+            )
+            .setFooter({
+                text: 'نظام مخالفات مجتمع النظيم'
+            })
+            .setTimestamp();
 
     if (imageUrl) {
         dmEmbed.setImage(imageUrl);
     }
+
+    // ==============================
+    // إرسال DM
+    // ==============================
 
     let dmSent = true;
 
@@ -267,31 +333,48 @@ async function handleViolationSelect(interaction) {
         });
     } catch (error) {
         dmSent = false;
-        console.log(
-            `تعذر إرسال DM للمستخدم ${target.id}:`,
+
+        console.error(
+            `❌ تعذر إرسال DM للمستخدم ${target.id}:`,
             error.message
         );
     }
 
+    // ==============================
     // تحديث رسالة المخالفة
-    const completedEmbed = EmbedBuilder
-        .from(interaction.message.embeds[0])
-        .setColor(0x00FF00)
-        .setTitle('✅ تم تسجيل المخالفة')
-        .setDescription(
-            `**المخالف:** ${target}\n\n` +
-            `**المخالفة:** ${violation.name}\n` +
-            `**العقوبة:** ${violation.punishment}\n\n` +
-            `**سجلها:** ${interaction.user}\n\n` +
-            `${dmSent ? '📩 تم إرسال المخالفة للخاص.' : '⚠️ تعذر إرسال المخالفة للخاص.'}`
-        )
-        .setTimestamp();
+    // ==============================
+
+    const completedEmbed =
+        EmbedBuilder
+            .from(
+                interaction.message.embeds[0]
+            )
+            .setColor(0x00FF00)
+            .setTitle(
+                '✅ تم تسجيل المخالفة'
+            )
+            .setDescription(
+                `**المخالف:** ${target}\n\n` +
+                `**المخالفة:** ${violation.name}\n` +
+                `**العقوبة:** ${violation.punishment}\n\n` +
+                `**سجلها:** ${interaction.user}\n\n` +
+                (
+                    dmSent
+                        ? '📩 تم إرسال تفاصيل المخالفة إلى الخاص.'
+                        : '⚠️ تعذر إرسال تفاصيل المخالفة إلى الخاص.'
+                )
+            )
+            .setTimestamp();
 
     return interaction.update({
         embeds: [completedEmbed],
         components: []
     });
 }
+
+// ==============================
+//           التصدير
+// ==============================
 
 module.exports = {
     violationCommand,

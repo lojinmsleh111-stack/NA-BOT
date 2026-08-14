@@ -33,7 +33,6 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// قنوات اللوج المنفصلة
 const ACCEPT_LOG_CHANNEL_ID =
     process.env.ACCEPT_LOG_CHANNEL_ID ||
     process.env.LOG_CHANNEL_ID ||
@@ -50,11 +49,11 @@ const PANEL_CHANNEL_ID = '1521392423279005736';
 // رتبة التصريح
 const ROLE_ID = process.env.ROLE_ID;
 
-// روم أوامر الرول بلاي الأخرى
+// روم أوامر الرول بلاي
 const TARGET_CHANNEL_ID = '1510857986778726641';
 
 // ==============================
-//        بدء تشغيل الخدمات
+//        تشغيل البوت
 // ==============================
 
 const client = new Client({
@@ -68,6 +67,10 @@ const client = new Client({
     partials: ['CHANNEL']
 });
 
+// ==============================
+//             Groq
+// ==============================
+
 let groq = null;
 
 if (GROQ_API_KEY && GROQ_API_KEY.trim() !== '') {
@@ -77,10 +80,10 @@ if (GROQ_API_KEY && GROQ_API_KEY.trim() !== '') {
         });
 
         console.log('✅ تم تهيئة Groq SDK بنجاح.');
-    } catch (e) {
+    } catch (error) {
         console.error(
             '❌ خطأ في تهيئة Groq SDK:',
-            e.message
+            error.message
         );
     }
 } else {
@@ -89,10 +92,14 @@ if (GROQ_API_KEY && GROQ_API_KEY.trim() !== '') {
     );
 }
 
+// ==============================
+//       جلسات التقديم
+// ==============================
+
 const applySessions = new Map();
 
 // ==============================
-//        الأسئلة (بالترتيب)
+//          أسئلة التقديم
 // ==============================
 
 const applyQuestions = [
@@ -121,7 +128,7 @@ const applyQuestions = [
 ];
 
 // ==============================
-//     تسجيل الأوامر
+//       تسجيل الأوامر
 // ==============================
 
 const commands = [
@@ -168,7 +175,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName('setup-apply')
         .setDescription(
-            'إنشاء بانل التقديم (للإدارة)'
+            'إنشاء بانل التقديم'
         )
 ].map(command => command.toJSON());
 
@@ -209,23 +216,22 @@ if (DISCORD_TOKEN && CLIENT_ID) {
 }
 
 // ==============================
-//        الوظائف المساعدة
+//       توليد ID عشوائي
 // ==============================
 
 async function generateUniqueId(guild) {
     try {
         await guild.members.fetch();
-    } catch (e) {
+    } catch (error) {
         console.error(
             'خطأ في جلب الأعضاء:',
-            e.message
+            error.message
         );
     }
 
-    let isUnique = false;
     let randomId = '';
 
-    while (!isUnique) {
+    while (true) {
         randomId = Math.floor(
             100000 + Math.random() * 900000
         ).toString();
@@ -240,30 +246,37 @@ async function generateUniqueId(guild) {
             );
 
         if (!exists) {
-            isUnique = true;
+            return randomId;
         }
     }
-
-    return randomId;
 }
+
+// ==============================
+//       إرسال سؤال بالخاص
+// ==============================
 
 async function sendDMQuestion(
     channel,
     questionText
 ) {
-    const embed = new EmbedBuilder()
-        .setColor(0x0099FF)
-        .setTitle('📝 سؤال التقديم')
-        .setDescription(questionText)
-        .setFooter({
-            text:
-                'يرجى كتابة الإجابة هنا في الرسائل الخاصة'
-        });
+    const embed =
+        new EmbedBuilder()
+            .setColor(0x0099FF)
+            .setTitle('📝 سؤال التقديم')
+            .setDescription(questionText)
+            .setFooter({
+                text:
+                    'يرجى كتابة الإجابة هنا في الرسائل الخاصة'
+            });
 
     await channel.send({
         embeds: [embed]
     });
 }
+
+// ==============================
+//       بدء التقديم
+// ==============================
 
 async function startApplicationProcess(
     user,
@@ -272,32 +285,35 @@ async function startApplicationProcess(
     const userId = user.id;
 
     if (applySessions.has(userId)) {
-        const msg =
+        const message =
             'لديك جلسة تقديم جارية بالفعل في الخاص.';
 
-        return interaction
-            ? interaction.reply({
-                  content: msg,
-                  ephemeral: true
-              })
-            : null;
+        if (interaction) {
+            return interaction.reply({
+                content: message,
+                ephemeral: true
+            });
+        }
+
+        return;
     }
 
     try {
         const dmChannel =
             await user.createDM();
 
-        const startEmbed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle(
-                '📝 بدء تقديم تصريح مجتمع النظيم'
-            )
-            .setDescription(
-                'نحن سعداء بتقدملك لمجتمع النظيم.\n' +
-                'يرجى الإجابة على الأسئلة التالية بعناية، سيتم مراجعة إجاباتك بواسطة الذكاء الاصطناعي.\n\n' +
-                'أرسل إجاباتك كرسايل عادية في هذه المحادثة.'
-            )
-            .setTimestamp();
+        const startEmbed =
+            new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle(
+                    '📝 بدء تقديم تصريح مجتمع النظيم'
+                )
+                .setDescription(
+                    'نحن سعداء بتقدملك لمجتمع النظيم.\n' +
+                    'يرجى الإجابة على الأسئلة التالية بعناية، سيتم مراجعة إجاباتك بواسطة الذكاء الاصطناعي.\n\n' +
+                    'أرسل إجاباتك كرسائل عادية في هذه المحادثة.'
+                )
+                .setTimestamp();
 
         await dmChannel.send({
             embeds: [startEmbed]
@@ -322,6 +338,11 @@ async function startApplicationProcess(
             });
         }
     } catch (error) {
+        console.error(
+            'خطأ في بدء التقديم:',
+            error.message
+        );
+
         if (interaction) {
             await interaction.reply({
                 content:
@@ -333,10 +354,10 @@ async function startApplicationProcess(
 }
 
 // ==============================
-//      منطق التفاعلات
+//      التفاعلات
 // ==============================
 
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(
         `تم تشغيل البوت بنجاح باسم: ${client.user.tag}`
     );
@@ -348,7 +369,7 @@ client.on(
         try {
 
             // ==========================
-            //      Select Menu
+            //       Select Menu
             // ==========================
 
             if (
@@ -363,37 +384,36 @@ client.on(
                         interaction
                     );
                 }
+
+                return;
             }
 
             // ==========================
-            //         Buttons
+            //          Buttons
             // ==========================
 
             if (interaction.isButton()) {
-    const customId = interaction.customId;
 
-    if (
-        customId.startsWith(
-            'violation_paid:'
-        )
-    ) {
-        return await handleViolationPaid(
-            interaction
-        );
-    }
+                const customId =
+                    interaction.customId;
 
-    if (
-        customId ===
-        'start_apply_button'
-    ) {
-        return await startApplicationProcess(
-            interaction.user,
-            interaction
-        );
-    }
+                // ==========================
+                //      تسديد المخالفة
+                // ==========================
 
-    // باقي أزرار النظام...
-            }
+                if (
+                    customId.startsWith(
+                        'violation_paid:'
+                    )
+                ) {
+                    return await handleViolationPaid(
+                        interaction
+                    );
+                }
+
+                // ==========================
+                //       بدء التقديم
+                // ==========================
 
                 if (
                     customId ===
@@ -405,6 +425,10 @@ client.on(
                     );
                 }
 
+                // ==========================
+                //      قبول / رفض يدوي
+                // ==========================
+
                 if (
                     customId.startsWith(
                         'manual_accept_'
@@ -413,10 +437,12 @@ client.on(
                         'manual_reject_'
                     )
                 ) {
+
                     const parts =
                         customId.split('_');
 
-                    const action = parts[1];
+                    const action =
+                        parts[1];
 
                     const targetUserId =
                         parts[2];
@@ -434,7 +460,7 @@ client.on(
                             await client.guilds.fetch(
                                 GUILD_ID
                             );
-                    } catch (err) {
+                    } catch (error) {
                         return interaction.reply({
                             content:
                                 'تعذر الوصول للسيرفر.',
@@ -449,7 +475,7 @@ client.on(
                             await guild.members.fetch(
                                 targetUserId
                             );
-                    } catch (err) {
+                    } catch (error) {
                         return interaction.reply({
                             content:
                                 'تعذر العثور على العضو في السيرفر.',
@@ -457,7 +483,15 @@ client.on(
                         });
                     }
 
-                    if (action === 'accept') {
+                    // ==========================
+                    //          قبول
+                    // ==========================
+
+                    if (
+                        action ===
+                        'accept'
+                    ) {
+
                         const uniqueId =
                             await generateUniqueId(
                                 guild
@@ -470,203 +504,103 @@ client.on(
                             .setNickname(
                                 newNickname
                             )
-                            .catch(e =>
+                            .catch(error =>
                                 console.log(
                                     'تعذر تغيير الاسم:',
-                                    e.message
+                                    error.message
                                 )
                             );
 
                         if (ROLE_ID) {
                             await member.roles
                                 .add(ROLE_ID)
-                                .catch(e =>
+                                .catch(error =>
                                     console.log(
                                         'تعذر إضافة الرتبة:',
-                                        e.message
-// ==========================
-//         Buttons
-// ==========================
+                                        error.message
+                                    )
+                                );
+                        }
 
-if (interaction.isButton()) {
-    const customId = interaction.customId;
+                        const updatedEmbed =
+                            EmbedBuilder
+                                .from(
+                                    interaction
+                                        .message
+                                        .embeds[0]
+                                )
+                                .setColor(
+                                    0x00FF00
+                                )
+                                .setTitle(
+                                    `✅ تم القبول يدوياً بواسطة: ${interaction.user.tag}`
+                                )
+                                .addFields({
+                                    name:
+                                        'الاسم الجديد',
+                                    value:
+                                        `\`${newNickname}\``
+                                });
 
-    // ==========================
-    //     تسديد المخالفة
-    // ==========================
+                        return interaction.update({
+                            embeds: [
+                                updatedEmbed
+                            ],
+                            components: []
+                        });
+                    }
 
-    if (
-        customId.startsWith(
-            'violation_paid:'
-        )
-    ) {
-        return await handleViolationPaid(
-            interaction
-        );
-    }
+                    // ==========================
+                    //          رفض
+                    // ==========================
 
-    // ==========================
-    //      بدء التقديم
-    // ==========================
+                    if (
+                        action ===
+                        'reject'
+                    ) {
 
-    if (
-        customId ===
-        'start_apply_button'
-    ) {
-        return await startApplicationProcess(
-            interaction.user,
-            interaction
-        );
-    }
+                        await member
+                            .setNickname(null)
+                            .catch(() => {});
 
-    // ==========================
-    //    قبول / رفض التقديم
-    // ==========================
+                        if (ROLE_ID) {
+                            await member.roles
+                                .remove(
+                                    ROLE_ID
+                                )
+                                .catch(() => {});
+                        }
 
-    if (
-        customId.startsWith(
-            'manual_accept_'
-        ) ||
-        customId.startsWith(
-            'manual_reject_'
-        )
-    ) {
-        const parts =
-            customId.split('_');
+                        const updatedEmbed =
+                            EmbedBuilder
+                                .from(
+                                    interaction
+                                        .message
+                                        .embeds[0]
+                                )
+                                .setColor(
+                                    0xFF0000
+                                )
+                                .setTitle(
+                                    `❌ تم الرفض يدوياً بواسطة: ${interaction.user.tag}`
+                                );
 
-        const action = parts[1];
+                        return interaction.update({
+                            embeds: [
+                                updatedEmbed
+                            ],
+                            components: []
+                        });
+                    }
 
-        const targetUserId =
-            parts[2];
+                    return;
+                }
 
-        const robloxName =
-            parts
-                .slice(3)
-                .join('_') ||
-            'User';
-
-        let guild;
-
-        try {
-            guild =
-                await client.guilds.fetch(
-                    GUILD_ID
-                );
-        } catch (err) {
-            return interaction.reply({
-                content:
-                    'تعذر الوصول للسيرفر.',
-                ephemeral: true
-            });
-        }
-
-        let member;
-
-        try {
-            member =
-                await guild.members.fetch(
-                    targetUserId
-                );
-        } catch (err) {
-            return interaction.reply({
-                content:
-                    'تعذر العثور على العضو في السيرفر.',
-                ephemeral: true
-            });
-        }
-
-        if (action === 'accept') {
-            const uniqueId =
-                await generateUniqueId(
-                    guild
-                );
-
-            const newNickname =
-                `NA | ${robloxName} | ${uniqueId}`;
-
-            await member
-                .setNickname(
-                    newNickname
-                )
-                .catch(e =>
-                    console.log(
-                        'تعذر تغيير الاسم:',
-                        e.message
-                    )
-                );
-
-            if (ROLE_ID) {
-                await member.roles
-                    .add(ROLE_ID)
-                    .catch(e =>
-                        console.log(
-                            'تعذر إضافة الرتبة:',
-                            e.message
-                        )
-                    );
+                return;
             }
-
-            const updatedEmbed =
-                EmbedBuilder.from(
-                    interaction
-                        .message
-                        .embeds[0]
-                )
-                    .setColor(0x00FF00)
-                    .setTitle(
-                        `✅ تم القبول يدوياً بواسطة: ${interaction.user.tag}`
-                    )
-                    .addFields({
-                        name:
-                            'الاسم الجديد',
-                        value:
-                            `\`${newNickname}\``
-                    });
-
-            await interaction.update({
-                embeds: [
-                    updatedEmbed
-                ],
-                components: []
-            });
-        }
-
-        if (action === 'reject') {
-            await member
-                .setNickname(null)
-                .catch(() => {});
-
-            if (ROLE_ID) {
-                await member.roles
-                    .remove(ROLE_ID)
-                    .catch(() => {});
-            }
-
-            const updatedEmbed =
-                EmbedBuilder.from(
-                    interaction
-                        .message
-                        .embeds[0]
-                )
-                    .setColor(0xFF0000)
-                    .setTitle(
-                        `❌ تم الرفض يدوياً بواسطة: ${interaction.user.tag}`
-                    );
-
-            await interaction.update({
-                embeds: [
-                    updatedEmbed
-                ],
-                components: []
-            });
-        }
-
-        return;
-    }
-                            }
 
             // ==========================
-            //     Slash Commands
+            //       Slash Commands
             // ==========================
 
             if (
@@ -676,14 +610,12 @@ if (interaction.isButton()) {
             }
 
             // ==========================
-            //       المخالفات
+            //         المخالفات
             // ==========================
 
             if (
                 interaction.commandName ===
-                    'mukhalafa' ||
-                interaction.commandName ===
-                    'مخالفة'
+                'mukhalafa'
             ) {
                 return await handleViolationCommand(
                     interaction
@@ -691,13 +623,14 @@ if (interaction.isButton()) {
             }
 
             // ==========================
-            //       setup-apply
+            //        setup-apply
             // ==========================
 
             if (
                 interaction.commandName ===
                 'setup-apply'
             ) {
+
                 if (
                     interaction.channelId !==
                     PANEL_CHANNEL_ID
@@ -711,7 +644,9 @@ if (interaction.isButton()) {
 
                 const panelEmbed =
                     new EmbedBuilder()
-                        .setColor(0x2F3136)
+                        .setColor(
+                            0x2F3136
+                        )
                         .setTitle(
                             '📝 تقديم تصريح مجتمع النظيم'
                         )
@@ -743,8 +678,12 @@ if (interaction.isButton()) {
                         );
 
                 await interaction.channel.send({
-                    embeds: [panelEmbed],
-                    components: [row]
+                    embeds: [
+                        panelEmbed
+                    ],
+                    components: [
+                        row
+                    ]
                 });
 
                 return interaction.reply({
@@ -769,10 +708,15 @@ if (interaction.isButton()) {
                 });
             }
 
+            // ==========================
+            //          roleplay
+            // ==========================
+
             if (
                 interaction.commandName ===
                 'roleplay'
             ) {
+
                 const hostAccount =
                     interaction.options.getString(
                         'حسابك_روبلوكس'
@@ -780,7 +724,7 @@ if (interaction.isButton()) {
 
                 const startTime =
                     interaction.options.getString(
-                        'وقت_بداية_الرول'
+                        
                     );
 
                 const responseText =
@@ -810,15 +754,21 @@ __**اتمنى لكم رول ممتع🤍**__
 
 @everyone`;
 
-                await interaction.reply({
-                    content: responseText
+                return interaction.reply({
+                    content:
+                        responseText
                 });
             }
+
+            // ==========================
+            //             rate
+            // ==========================
 
             if (
                 interaction.commandName ===
                 'rate'
             ) {
+
                 const rateText =
 `__**تقييم رولي**__
 
@@ -834,7 +784,8 @@ __**اذا ماعجبك رول حط ❌**__
 
                 const replyMessage =
                     await interaction.reply({
-                        content: rateText,
+                        content:
+                            rateText,
                         fetchReply: true
                     });
 
@@ -849,15 +800,22 @@ __**اذا ماعجبك رول حط ❌**__
                 } catch (error) {
                     console.error(
                         'خطأ في إرسال الريأكشن:',
-                        error
+                        error.message
                     );
                 }
+
+                return;
             }
+
+            // ==========================
+            //             vote
+            // ==========================
 
             if (
                 interaction.commandName ===
                 'vote'
             ) {
+
                 const voteText =
 `__**تصويت رول بلاي**__
 
@@ -869,60 +827,84 @@ __**شكراً لتصويتك هذا يساعدنا نفتح الرول بلاي
 
                 const replyMessage =
                     await interaction.reply({
-                        content: voteText,
+                        content:
+                            voteText,
                         fetchReply: true
                     });
 
                 try {
-                 await replyMessage.react(
+                    await replyMessage.react(
                         '✅'
                     );
                 } catch (error) {
                     console.error(
                         'خطأ في إرسال الريأكشن:',
-                        error
+                        error.message
                     );
                 }
+
+                return;
             }
+
+            // ==========================
+            //          schedule
+            // ==========================
 
             if (
                 interaction.commandName ===
                 'schedule'
             ) {
+
                 const scheduleText =
 `__**اوقات رول بلاي**__
 
-__**من الساعه 12الظهر الى 2**__
+__**من الساعه 12 الظهر الى 2**__
 
 __**من الساعه 4 العصر الى 6**__
 
 __**من الساعه 8 العشاء الى 10**__
 
-__**من الساعه 1 اليل الى 3**__
+__**من الساعه 1 الليل الى 3**__
 
 @everyone`;
 
-                await interaction.reply({
-                    content: scheduleText
+                return interaction.reply({
+                    content:
+                        scheduleText
                 });
             }
 
-        } catch (err) {
+        } catch (error) {
+
             console.error(
                 'خطأ أثناء تنفيذ التفاعل:',
-                err.message
+                error
             );
+
+            if (
+                !interaction.replied &&
+                !interaction.deferred
+            ) {
+                try {
+                    await interaction.reply({
+                        content:
+                            '❌ حدث خطأ أثناء تنفيذ الأمر.',
+                        ephemeral: true
+                    });
+                } catch {}
+            }
         }
     }
 );
 
 // ==============================
-//      استقبال الإجابات في الخاص
+//      استقبال إجابات DM
 // ==============================
 
 client.on(
     'messageCreate',
     async message => {
+
         if (
             message.author.bot ||
             message.channel.type !==
@@ -935,14 +917,22 @@ client.on(
             message.author.id;
 
         const session =
-            applySessions.get(userId);
+            applySessions.get(
+                userId
+            );
 
-        if (!session) return;
+        if (!session) {
+            return;
+        }
 
         const currentQuestion =
             applyQuestions[
                 session.currentQuestionIndex
             ];
+
+        if (!currentQuestion) {
+            return;
+        }
 
         session.answers.push({
             question:
@@ -957,16 +947,21 @@ client.on(
             session.currentQuestionIndex <
             applyQuestions.length
         ) {
+
             await sendDMQuestion(
                 message.channel,
                 applyQuestions[
                     session.currentQuestionIndex
                 ].text
             );
+
         } else {
+
             const finishingEmbed =
                 new EmbedBuilder()
-                    .setColor(0xFF9900)
+                    .setColor(
+                        0xFF9900
+                    )
                     .setTitle(
                         '⏳ تم استلام إجاباتك بنجاح'
                     )
@@ -975,7 +970,9 @@ client.on(
                     );
 
             await message.channel.send({
-                embeds: [finishingEmbed]
+                embeds: [
+                    finishingEmbed
+                ]
             });
 
             const userAnswers =
@@ -988,10 +985,10 @@ client.on(
             processApplication(
                 message.author,
                 userAnswers
-            ).catch(err => {
+            ).catch(error => {
                 console.error(
-                    'خطأ كلي في processApplication:',
-                    err.message
+                    'خطأ في processApplication:',
+                    error.message
                 );
             });
         }
@@ -999,18 +996,19 @@ client.on(
 );
 
 // ==============================
-//    معالجة التقديم والذكاء الاصطناعي
+//    معالجة التقديم والذكاء
 // ==============================
 
 async function processApplication(
     user,
     answers
 ) {
+
     const formattedAnswers =
         answers
             .map(
-                (a, i) =>
-                    `س${i + 1}: ${a.question}\nج${i + 1}: ${a.answer}`
+                (answer, index) =>
+                    `س${index + 1}: ${answer.question}\nج${index + 1}: ${answer.answer}`
             )
             .join('\n\n');
 
@@ -1021,6 +1019,7 @@ async function processApplication(
     const prompt =
 `
 أنت مساعد إداري في سيرفر ديسكورد للعب الواقعي (Roleplay) في مجتمع "النظيم".
+
 مهمتك هي مراجعة تقديم تصريح لمستخدم جديد.
 
 المستخدم: ${user.tag} (الايدي: ${user.id})
@@ -1038,6 +1037,7 @@ ${formattedAnswers}
 `;
 
     try {
+
         if (!groq) {
             throw new Error(
                 'مكتبة Groq غير مهيأة أو مفتاح GROQ_API_KEY مفقود'
@@ -1054,7 +1054,8 @@ ${formattedAnswers}
                     },
                     {
                         role: 'user',
-                        content: prompt
+                        content:
+                            prompt
                     }
                 ],
                 model:
@@ -1073,14 +1074,12 @@ ${formattedAnswers}
             aiResponse.trim();
 
         isAccepted =
-            cleanResponse.includes(
+            cleanResponse.startsWith(
                 'مقبول'
-            ) &&
-            !cleanResponse.startsWith(
-                'غير مقبول'
             );
 
     } catch (error) {
+
         console.error(
             '❌ خطأ في Groq API:',
             error.message
@@ -1100,42 +1099,55 @@ ${formattedAnswers}
     let guild = null;
 
     try {
+
         if (GUILD_ID) {
             guild =
                 await client.guilds.fetch(
                     GUILD_ID
                 );
         }
-    } catch (e) {
+
+    } catch (error) {
+
         console.error(
-            '⚠️ تعذر العثور على السيرفر (GUILD_ID):',
-            e.message
+            '⚠️ تعذر العثور على السيرفر:',
+            error.message
         );
     }
 
     let member = null;
 
     if (guild) {
+
         try {
+
             member =
                 await guild.members.fetch(
                     user.id
                 );
-        } catch (e) {
+
+        } catch (error) {
+
             console.error(
-                '⚠️ تعذر جلب العضو من السيرفر:',
-                e.message
+                '⚠️ تعذر جلب العضو:',
+                error.message
             );
         }
     }
+
+    // ==============================
+    //             قبول
+    // ==============================
 
     if (
         !aiFailed &&
         isAccepted
     ) {
+
         let newNickname = '';
 
         if (guild) {
+
             const uniqueId =
                 await generateUniqueId(
                     guild
@@ -1146,50 +1158,55 @@ ${formattedAnswers}
         }
 
         if (member) {
+
             await member
                 .setNickname(
                     newNickname
                 )
-                .catch(err =>
+                .catch(error =>
                     console.error(
                         '⚠️ تعذر تغيير الاسم:',
-                        err.message
+                        error.message
                     )
                 );
 
             if (ROLE_ID) {
+
                 await member.roles
-                    .add(ROLE_ID)
-                    .catch(err =>
+                    .add(
+                        ROLE_ID
+                    )
+                    .catch(error =>
                         console.error(
                             '⚠️ تعذر إضافة الرتبة:',
-                            err.message
+                            error.message
                         )
                     );
             }
         }
 
         try {
+
             const dmChannel =
                 await user.createDM();
 
             await dmChannel.send(
                 '🎉 **تهانينا!** تم قبول تقديمك في **مجتمع النظيم** بنجاح.'
             );
-        } catch (err) {
-            console.log(
-                'تعذر إرسال DM بالقبول'
-            );
-        }
+
+        } catch {}
 
         const acceptEmbed =
             new EmbedBuilder()
-                .setColor(0x00FF00)
+                .setColor(
+                    0x00FF00
+                )
                 .setTitle(
                     `✅ تقديم مقبول تلقائياً: ${user.tag}`
                 )
                 .setAuthor({
-                    name: user.tag,
+                    name:
+                        user.tag,
                     iconURL:
                         user.displayAvatarURL({
                             dynamic: true
@@ -1201,14 +1218,15 @@ ${formattedAnswers}
                 .addFields(
                     {
                         name:
-                            'الاسم الجديد المفترض',
+                            'الاسم الجديد',
                         value:
                             `\`${newNickname || 'غير متاح'}\``
                     },
                     {
                         name:
                             'ايدي المستخدم',
-                        value: user.id,
+                        value:
+                            user.id,
                         inline: true
                     }
                 )
@@ -1241,24 +1259,28 @@ ${formattedAnswers}
                 embeds: [
                     acceptEmbed
                 ],
-                components: [row]
+                components: [
+                    row
+                ]
             }
         );
 
     } else {
 
+        // ==============================
+        //             رفض
+        // ==============================
+
         try {
+
             const dmChannel =
                 await user.createDM();
 
             await dmChannel.send(
                 `❌ **عذراً!** تم رفض تقديمك في **مجتمع النظيم**.\n\n**السبب:**\n${aiResponse}`
             );
-        } catch (err) {
-            console.log(
-                'تعذر إرسال DM بالرفض'
-            );
-        }
+
+        } catch {}
 
         const rejectEmbed =
             new EmbedBuilder()
@@ -1269,11 +1291,12 @@ ${formattedAnswers}
                 )
                 .setTitle(
                     aiFailed
-                        ? `⚠️ تقديم يطلب مراجعة يدوي: ${user.tag}`
+                        ? `⚠️ تقديم يحتاج مراجعة يدوية: ${user.tag}`
                         : `❌ تقديم مرفوض تلقائياً: ${user.tag}`
                 )
                 .setAuthor({
-                    name: user.tag,
+                    name:
+                        user.tag,
                     iconURL:
                         user.displayAvatarURL({
                             dynamic: true
@@ -1285,7 +1308,8 @@ ${formattedAnswers}
                 .addFields({
                     name:
                         'ايدي المستخدم',
-                    value: user.id,
+                    value:
+                        user.id,
                     inline: true
                 })
                 .setFooter({
@@ -1317,7 +1341,9 @@ ${formattedAnswers}
                 embeds: [
                     rejectEmbed
                 ],
-                components: [row]
+                components: [
+                    row
+                ]
             }
         );
     }
@@ -1331,46 +1357,51 @@ async function sendToLogChannel(
     channelId,
     messageOptions
 ) {
+
     if (!channelId) {
         console.error(
-            '❌ لم يتم توفير channelId لإرسال اللوج.'
+            '❌ لم يتم توفير channelId.'
         );
         return;
     }
 
     try {
+
         const logChannel =
             await client.channels.fetch(
                 channelId
             );
 
-        if (logChannel) {
-            await logChannel.send(
-                messageOptions
-            );
-
-            console.log(
-                `✅ تم إرسال التقرير بنجاح إلى القناة: ${channelId}`
-            );
-        } else {
+        if (!logChannel) {
             console.error(
-                `❌ لم يتم العثور على القناة برقم: ${channelId}`
+                `❌ لم يتم العثور على القناة: ${channelId}`
             );
+            return;
         }
 
-    } catch (err) {
+        await logChannel.send(
+            messageOptions
+        );
+
+        console.log(
+            `✅ تم إرسال التقرير إلى القناة: ${channelId}`
+        );
+
+    } catch (error) {
+
         console.error(
             `❌ فشل إرسال اللوج إلى القناة (${channelId}):`,
-            err.message
+            error.message
         );
     }
 }
 
 // ==============================
-//    خادم HTTP لإبقاء Render نشطاً
+//       HTTP Server لـ Render
 // ==============================
 
-const http = require('http');
+const http =
+    require('http');
 
 const PORT =
     process.env.PORT || 10000;
@@ -1378,6 +1409,7 @@ const PORT =
 const server =
     http.createServer(
         (req, res) => {
+
             res.writeHead(
                 200,
                 {
@@ -1396,18 +1428,26 @@ server.listen(
     PORT,
     '0.0.0.0',
     () => {
+
         console.log(
             `HTTP Server running on port ${PORT}`
         );
     }
 );
 
+// ==============================
+//           Login
+// ==============================
+
 if (DISCORD_TOKEN) {
+
     client.login(
         DISCORD_TOKEN
     );
+
 } else {
+
     console.error(
         '❌ DISCORD_TOKEN غير موجود في متغيرات البيئة!'
     );
-        }  
+    }

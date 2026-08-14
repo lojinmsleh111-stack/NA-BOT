@@ -484,72 +484,186 @@ client.on(
                                     console.log(
                                         'تعذر إضافة الرتبة:',
                                         e.message
-                                    )
-                                );
-                        }
+// ==========================
+//         Buttons
+// ==========================
 
-                        const updatedEmbed =
-                            EmbedBuilder.from(
-                                interaction
-                                    .message
-                                    .embeds[0]
-                            )
-                                .setColor(
-                                    0x00FF00
-                                )
-                                .setTitle(
-                                    `✅ تم القبول يدوياً بواسطة: ${interaction.user.tag}`
-                                )
-                                .addFields({
-                                    name:
-                                        'الاسم الجديد',
-                                    value:
-                                        `\`${newNickname}\``
-                                });
+if (interaction.isButton()) {
+    const customId = interaction.customId;
 
-                        await interaction.update({
-                            embeds: [
-                                updatedEmbed
-                            ],
-                            components: []
-                        });
-                    }
+    // ==========================
+    //     تسديد المخالفة
+    // ==========================
 
-                    if (action === 'reject') {
-                        await member
-                            .setNickname(null)
-                            .catch(() => {});
+    if (
+        customId.startsWith(
+            'violation_paid:'
+        )
+    ) {
+        return await handleViolationPaid(
+            interaction
+        );
+    }
 
-                        if (ROLE_ID) {
-                            await member.roles
-                                .remove(ROLE_ID)
-                                .catch(() => {});
-                        }
+    // ==========================
+    //      بدء التقديم
+    // ==========================
 
-                        const updatedEmbed =
-                            EmbedBuilder.from(
-                                interaction
-                                    .message
-                                    .embeds[0]
-                            )
-                                .setColor(
-                                    0xFF0000
-                                )
-                                .setTitle(
-                                    `❌ تم الرفض يدوياً بواسطة: ${interaction.user.tag}`
-                                );
+    if (
+        customId ===
+        'start_apply_button'
+    ) {
+        return await startApplicationProcess(
+            interaction.user,
+            interaction
+        );
+    }
 
-                        await interaction.update({
-                            embeds: [
-                                updatedEmbed
-                            ],
-                            components: []
-                        });
-                    }
+    // ==========================
+    //    قبول / رفض التقديم
+    // ==========================
 
-                    return;
-                }
+    if (
+        customId.startsWith(
+            'manual_accept_'
+        ) ||
+        customId.startsWith(
+            'manual_reject_'
+        )
+    ) {
+        const parts =
+            customId.split('_');
+
+        const action = parts[1];
+
+        const targetUserId =
+            parts[2];
+
+        const robloxName =
+            parts
+                .slice(3)
+                .join('_') ||
+            'User';
+
+        let guild;
+
+        try {
+            guild =
+                await client.guilds.fetch(
+                    GUILD_ID
+                );
+        } catch (err) {
+            return interaction.reply({
+                content:
+                    'تعذر الوصول للسيرفر.',
+                ephemeral: true
+            });
+        }
+
+        let member;
+
+        try {
+            member =
+                await guild.members.fetch(
+                    targetUserId
+                );
+        } catch (err) {
+            return interaction.reply({
+                content:
+                    'تعذر العثور على العضو في السيرفر.',
+                ephemeral: true
+            });
+        }
+
+        if (action === 'accept') {
+            const uniqueId =
+                await generateUniqueId(
+                    guild
+                );
+
+            const newNickname =
+                `NA | ${robloxName} | ${uniqueId}`;
+
+            await member
+                .setNickname(
+                    newNickname
+                )
+                .catch(e =>
+                    console.log(
+                        'تعذر تغيير الاسم:',
+                        e.message
+                    )
+                );
+
+            if (ROLE_ID) {
+                await member.roles
+                    .add(ROLE_ID)
+                    .catch(e =>
+                        console.log(
+                            'تعذر إضافة الرتبة:',
+                            e.message
+                        )
+                    );
             }
+
+            const updatedEmbed =
+                EmbedBuilder.from(
+                    interaction
+                        .message
+                        .embeds[0]
+                )
+                    .setColor(0x00FF00)
+                    .setTitle(
+                        `✅ تم القبول يدوياً بواسطة: ${interaction.user.tag}`
+                    )
+                    .addFields({
+                        name:
+                            'الاسم الجديد',
+                        value:
+                            `\`${newNickname}\``
+                    });
+
+            await interaction.update({
+                embeds: [
+                    updatedEmbed
+                ],
+                components: []
+            });
+        }
+
+        if (action === 'reject') {
+            await member
+                .setNickname(null)
+                .catch(() => {});
+
+            if (ROLE_ID) {
+                await member.roles
+                    .remove(ROLE_ID)
+                    .catch(() => {});
+            }
+
+            const updatedEmbed =
+                EmbedBuilder.from(
+                    interaction
+                        .message
+                        .embeds[0]
+                )
+                    .setColor(0xFF0000)
+                    .setTitle(
+                        `❌ تم الرفض يدوياً بواسطة: ${interaction.user.tag}`
+                    );
+
+            await interaction.update({
+                embeds: [
+                    updatedEmbed
+                ],
+                components: []
+            });
+        }
+
+        return;
+    }
+                            }
 
             // ==========================
             //     Slash Commands
